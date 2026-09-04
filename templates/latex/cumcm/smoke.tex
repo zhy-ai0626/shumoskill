@@ -1,0 +1,68 @@
+% 编译链冒烟测试 —— 由 scripts/doctor.py 的 latex-smoke 检查调用。
+%
+% 目的不是排版好看，而是**真的编译一次**，覆盖 CUMCM 论文实际会踩的四个风险面：
+%   1. ctexart 文档类能否加载（xelatex + ctex 宏包）
+%   2. 中文字形能否正常输出（缺字体时会变豆腐块或直接报错）
+%   3. 数学环境 + amsmath 能否工作
+%   4. graphicx / booktabs / 浮动体能否工作
+% 只要其中任何一项在本机不通，正式论文最后一定编译不出来。
+% 不依赖任何外部图片文件：用 \rule 画一个占位色块代替 \includegraphics。
+%
+% 手动复现：xelatex -interaction=nonstopmode smoke.tex
+\documentclass[12pt, a4paper]{ctexart}
+\usepackage{amsmath, amssymb, bm}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{float}
+\usepackage{geometry}
+\geometry{margin=2.5cm}
+
+\title{编译链冒烟测试}
+\author{}
+\date{}
+
+\begin{document}
+\maketitle
+
+\section{中文段落}
+
+本文件用于验证本机的 \LaTeX{} 编译链是否可用。若这一页能正常生成 PDF、
+中文不出现缺字方块、公式与表格均正确排版，则正式论文的编译环境就绪。
+常见的失败原因是：未安装 TeX 发行版、未安装 \texttt{ctex} 宏包集、
+或系统缺少中文字体（Windows 需要宋体/黑体，Linux 需要 fandol 或思源字体）。
+
+\section{数学环境}
+
+行内公式 $E=mc^2$，行间公式与编号：
+\begin{equation}
+\hat{\bm\beta} = \left(\bm X^\top \bm X\right)^{-1} \bm X^\top \bm y,
+\qquad
+\int_{0}^{\infty} e^{-x^2}\,\mathrm{d}x = \frac{\sqrt{\pi}}{2}
+\end{equation}
+
+多行对齐：
+\begin{align}
+Y_{ij} &= \bm x_{ij}^\top \bm\beta + u_i + \varepsilon_{ij}\\
+       &\quad (u_i \sim N(0,\sigma_u^2),\ \varepsilon_{ij} \sim N(0,\sigma^2))
+\end{align}
+
+\section{表格与浮动体}
+
+\begin{table}[H]\centering
+\caption{三线表能否正常排版}
+\begin{tabular}{lrr}
+\toprule
+组别 & 样本量 & 均值 \\
+\midrule
+甲 & 128 & $0.0421$ \\
+乙 & 96  & $-0.0153$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure}[H]\centering
+\rule{6cm}{3cm}
+\caption{占位图形（不依赖外部图片，仅验证浮动体与题注）}
+\end{figure}
+
+\end{document}

@@ -1,0 +1,18 @@
+# Codex UI 元数据。SKILL.md「Codex 原生入口」与 AGENTS.md 都引用本文件；
+# 它只是发现层的薄壳，**不要把工作流内容复制到这里**（见 AGENTS.md 的约定）。
+name: mathmodel-skill
+display_name: 数学建模竞赛工作流 (CUMCM ABC)
+description: >-
+  全国大学生数学建模竞赛本科组 A/B/C 题的端到端工作流：从选题、问题分解、模型选型，
+  到求解、稳健性、论文写作与提交合规，共 10 个阶段，带可恢复的决策状态。
+  经验层蒸馏自 18 份官方讲评与 44 篇官方展示论文。
+  不适用于 MCM/ICM、电工杯、D/E 题，也不用于一般性的模型选择或普通数据分析。
+version: "6.1"
+entrypoint: SKILL.md
+instructions: AGENTS.md
+license: MIT
+tags:
+  - mathematical-modeling
+  - cumcm
+  - competition
+  - chinese
