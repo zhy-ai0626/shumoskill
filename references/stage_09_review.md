@@ -27,6 +27,21 @@ Minimum branches:
 
 ### CUMCM
 
+**先跑脚本，再人工核**——下面这条命令覆盖清单里所有机器能判定的项，
+不要用肉眼替代它（`--support` 传了才会检查压缩包内容）：
+
+```bash
+python <skill>/scripts/check_compliance.py --paper paper_output/paper.pdf \
+    --support support_materials/支撑材料.zip
+```
+
+退出码非零就是有 FAIL，**不得进入提交**。它的 `--json` 输出里
+`compliance_checks` 一段可直接写进 `decision_log.stages.9.compliance_checks`；
+其中 `null` 表示"这项没测到"（例如没传 `--support`），
+必须人工确认后改成布尔值才算通过 exit condition，不能当 `false` 也不能当 `true`。
+
+脚本查不到而只能人工看的，它会在末尾列出来。以下条款仍需逐条对照官方原文：
+
 - electronic paper starts with the abstract page;
 - no commitment form, numbering page, table of contents, or identity information;
 - main text and file size meet the current limits;
@@ -78,6 +93,14 @@ Cross-check the final paper against `decision_log.json` and the saved artifacts:
   抄错一位不会报错，评委却能核出来。退出码非零就说明有未追溯的值。
   若某些值只写在 `results/` 下的 `.txt` 报告里，可加 `--include-text` 放宽，
   但更好的做法是把它们写进 `.json`/`.csv`——评委核的是可机读的结果文件；
+
+- 自检承诺与局限全部了结——**Stage 6 跑过也要在这里再跑一次**，
+  因为 Stage 8 改写论文时既可能新增承诺句，也可能改动措辞让台账引用失配：
+
+  ```bash
+  python <skill>/scripts/check_selfaudit.py --ledger state/self_audit.json \
+      --paper paper.tex --workspace paper_workspace/ --results results/
+  ```
 
 - every figure/table path resolves and its caption matches the content;
 - every external claim has a verified source;
@@ -142,6 +165,9 @@ The `null` values above are schema placeholders only. Replace every one with an 
 
 ## Exit conditions
 
+- `scripts/check_compliance.py` 退出码为 0，且 `compliance_checks` 四个字段
+  全部是 `true`（没有 `null` 残留）；
+- `scripts/check_numbers.py` 与 `scripts/check_selfaudit.py` 退出码均为 0；
 - current official rules verified with no unresolved violation;
 - anti-pattern and consistency checks completed;
 - all high-severity panel findings resolved;

@@ -4,7 +4,13 @@
   "competition": "cumcm",
   "task_type": null,
   "_competition_doc": "enum: cumcm (本 fork 只做 CUMCM ABC 题；MCM/电工杯已移除). 由 stage 0 kickoff 第一问填入。score_artifact.py / stage 文件按此字段 dispatch competitions/<comp>/* 加载。",
-  "_task_type_doc": "题型代码，**不带竞赛前缀** (e.g. A_optimization / B_evaluation / C_data)。写成 cumcm:A_optimization 会在 config/dim_weights.json 里查不到、静默回退到全 1.0，无任何告警。由 stage 1 选题后填入。score_artifact.py 用此字段查 config/dim_weights.json。null 时使用 default 全 1.0 权重 = 等价老逻辑。",
+  "_task_type_doc": "**题号**代码，不带竞赛前缀 (A_optimization / B_evaluation / C_data)。写成 cumcm:A_optimization 会在 config/dim_weights.json 里查不到、静默回退到全 1.0，无任何告警。由 stage 1 选题后填入。**只用于 score_artifact.py 查评分权重，不是题型**——键名里的 optimization/evaluation/data 是上游遗留。选方法看 problem_shape。",
+  "problem_shape": null,
+  "_problem_shape_doc": "**题型**，五选一：mechanism_geometry(机理/几何/运动) | inverse_measurement(工程反演/测量) | data_statistics(数据/统计) | discrete_decision(统计决策) | compositional(成分数据)。由 stage 1 **从题面**判定，stage 3 据此选方法主线（winning_patterns.md §1 五类）。**题号不是题型**：B 题最近四年是计算几何/几何优化/统计决策/光学反演，零次评价类；照题号套 AHP/熵权/TOPSIS 正是组委会连续四年点名的套路化。判据见 competitions/cumcm/题型与算法对照.md 第一节。",
+  "problem_shape_basis": "",
+  "_problem_shape_basis_doc": "判定依据：题面里的哪句话、哪个附件特征支持这个题型。空着不算完成 stage 1。",
+  "problem_shape_modifiers": [],
+  "_problem_shape_modifiers_doc": "叠加在主线之上的**结构性约束**，可多选，也可为空。目前定义：compositional（有一组列之和为常数或近似常数——**方法全变**，必须 CLR）、repeated_measures（同一对象多条记录，观测不独立，要混合效应/GEE）、no_paired_labels（要预测的量在数据里没有配对观测，就不是监督学习问题）、merged_cells（附件有合并单元格残留，分组前必须 ffill）。**由 scripts/scan_attachments.py 扫出来，不靠人记得去看。**2021B 实测：主线是 data_statistics，但六个选择性列之和恒为 100，compositional 必须叠加——只填主线会漏掉'方法全变'那一半。",
   "problem": null,
   "problem_meta": {
     "year": null,
@@ -24,6 +30,29 @@
   "mode": "standard",
   "started_at": null,
   "current_stage": 0,
+  "resume": {
+    "_doc": "跨会话续跑所需的信息。72 小时赛期里上下文必然被压缩多次、大概率换会话，届时**只有磁盘上的东西还在**。2023A 演练做了一次中断恢复审计：schema 3.1 原本对下面七类信息全无归宿，恢复时只能靠猜或重做，而重做最容易在口径上悄悄改口。每个阶段结尾必写。",
+    "last_write_iso": null,
+    "in_flight": {
+      "_doc": "被打断时正在做什么。current_stage 只说到阶段，说不到'第几个子问、做到哪一步'；qi_status 的合法取值里也没有'进行中'。",
+      "stage": null,
+      "qi": null,
+      "action": "",
+      "blocking_unknown": ""
+    },
+    "next_actions": [],
+    "_next_actions_doc": "下一步的具体动作，写成可直接执行的句子。恢复的第一件事是读它，而不是重新读一遍题面自己想。",
+    "open_questions": [],
+    "_open_questions_doc": "悬而未决、需要人拍板的问题。中断若发生在等人回答时，这一条不写就彻底丢了。",
+    "reproduce": {
+      "_doc": "别人（或换了会话的自己）怎么把数跑出来。支撑材料要求代码可运行，这一条同时服务于恢复与交卷。",
+      "entrypoints": [],
+      "seed": "",
+      "env_notes": ""
+    },
+    "settled_conventions": [],
+    "_settled_conventions_doc": "已经定死、**不许重新决定**的口径：变量起算点、平均的加权方式、单位、数据取舍规则等。恢复时最危险的不是忘了做什么，而是把某个口径换了个同样合理的定法，导致前后两问的数字不可比。"
+  },
   "compliance": {
     "ruleset": {
       "competition_year": null,
@@ -105,7 +134,7 @@
       "qi_weights": [],
       "_qi_weights_doc": "per-Qi 加权聚合权重数组, 长度=qi_count. 默认均匀 [1.0]*qi_count. score_artifact.py compute_stage5_verdict 用此重加权 mean.",
       "qi_status": {},
-      "_qi_status_doc": "{Q1: pass | mark_for_review | refine | block, ...}. high-severity issue 必须标记 block；mark_for_review = 该 Qi 单独弱但全 stage 仍 pass, L2 必读。",
+      "_qi_status_doc": "{Q1: pass | mark_for_review | refine | block | in_progress | not_started, ...}. high-severity issue 必须标记 block；mark_for_review = 该 Qi 单独弱但全 stage 仍 pass, L2 必读。in_progress / not_started 由 agent 在 Qi 开工与完工时维护，**不由 score_artifact.py 写入**（它只在评分后写 pass/mark_for_review/refine/block），加这两个值是为了让中断恢复时看得出哪个子问做了一半。",
       "review_qis": [],
       "refine_qis": [],
       "block_qis": [],

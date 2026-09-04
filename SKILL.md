@@ -76,11 +76,12 @@ Codex 优先按 skill 目录发现本文件:
 |---|---|---|
 | `competitions/cumcm/current_rules.md` | **2026 规则基线 + AI 披露链路**。修正了上游"正文限 30 页"的错误（官方是**尽量 20 页以内**），并把 AI 规定从 2025 试行版更新到 2026 试行版 | Stage 0 必读；Stage 9 提交前逐条核 |
 | `competitions/cumcm/winning_patterns.md` | **运行时主入口**，已接入 Stage 0/3/4/5/6/7/8：题型→算法主线、反模式速查、结果呈现清单、摘要成分、结构分位 | 各 Stage 自动读取 |
-| `competitions/cumcm/anti_patterns.md` | 64 条反模式（上游 A–J 共 42 条 + 本项目 Z1–Z22），Z 段每条都有官方原文或演练实测出处；含**使用边界告示**（别把简化近似判成错误） | Stage 3 选模型、Stage 9 终审 |
+| `competitions/cumcm/anti_patterns.md` | 66 条反模式（上游 A–J 共 42 条 + 本项目 Z1–Z24），Z 段每条都有官方原文或演练实测出处；含**使用边界告示**（别把简化近似判成错误） | Stage 3 选模型、Stage 9 终审 |
 | `competitions/cumcm/题型与算法对照.md` | 给人读的**完整版**知识总结（与交付包 `4_知识点总结` 同一文档），运行时不必全读 | 赛前通读一遍 |
 | `assets/official/` | **随 skill 分发的官方原件**：2026 AI 规定、论文格式规范、参赛规则、format2025.doc、AI 详情模板 | Stage 0 / Stage 9 |
 | `competitions/cumcm/摘要写法.md` | 44 篇一等奖摘要的成分命中率与真实句式 | Stage 8 写摘要 |
 | `competitions/cumcm/empirical_abc.json` | **按 题号×年份×来源 分层**的实证分位 | L1 critic 取锚点 |
+| `figures/cumcm_style.py` + `figures/gallery.py` | **图表模板**：中文字体、经验证的分类色板、**灰度打印可读**（颜色与线型/填充网格/标记捆绑，颜色拿不到单独用）、按题型的 7 张范例。图是主要得分位——2022A 讲评 9 条评阅问题里 5 条是呈现类，一等奖图数中位 20 张 | Stage 5 出结果图、Stage 8 排版 |
 | `code-templates/` | 30 个可跑代码模板(python/matlab) + 12 个 playbook，来自 `Lupynow/math-modeling-skills`(MIT)，**未改其内部约定** | Stage 5 求解 |
 
 **语料规模**：上游收录 91 份、仅 59 份可提取文本、2025 年 n=1；
@@ -118,12 +119,22 @@ Codex 优先按 skill 目录发现本文件:
 5. 进入 Stage 0 (`references/stage_00_kickoff.md`), 不重复问已知字段；若题面未公布，完成环境与协作准备后保持 `qi_count=null` 并等待题面，不进入 Stage 1
 ```
 
-**已有 state 触发** (用户中途回到 skill):
+**已有 state 触发** (用户中途回到 skill，或上下文被压缩后换了会话):
 ```
 1. 读 `<cwd>/state/decision_log.json` 的 competition 与 current_stage
-2. 加载对应 stage_NN.md (按需结合 competitions/cumcm/* 内容)
-3. 不重复读 winning_patterns
+2. **读 resume 段**：
+   - `settled_conventions` → 这些口径已经定死，不许重新决定
+   - `in_flight` → 上次停在哪个 Qi、做到哪一步
+   - `next_actions` → 下一步做什么，照做，不要重新读题面自己另想一套
+   - `open_questions` → 有未决问题就先问用户，不要自己替他拍板
+   - `reproduce` → 要复现数值就按 entrypoints 与 seed 跑，别重写脚本
+3. 清点磁盘：results/ figures/ paper_workspace/ 里已有什么，别重算已有的
+4. 加载对应 stage_NN.md (按需结合 competitions/cumcm/* 内容)
+5. 不重复读 winning_patterns
 ```
+> 恢复时最容易犯、也最难发现的错不是"忘了做什么"，而是**把某个口径换了个同样合理的定法**
+> ——比如平均改成加权、起算点换一个、异常值判据松一档。前后两问的数字就不可比了，
+> 而且**任何脚本都不会报错**。`settled_conventions` 就是为这件事存在的。
 
 ---
 
@@ -171,16 +182,20 @@ Codex 优先按 skill 目录发现本文件:
 **只在进入阶段 N 时加载** `references/stage_NN_*.md`。**切勿**一次性全读。
 
 各阶段额外加载 (按需 + 按 competition 切换):
-- 每阶段开头: `<cwd>/state/decision_log.json` 必读
-- 每阶段结尾: `<cwd>/state/decision_log.json` 必写 (核心决策 + 5 维评分)
+- 每阶段开头: `<cwd>/state/decision_log.json` 必读。**先读 `resume` 段**——`in_flight` 说明上次停在哪、`next_actions` 是下一步、`settled_conventions` 是不许重新决定的口径
+- 每阶段结尾: `<cwd>/state/decision_log.json` 必写 (核心决策 + 5 维评分 + **`resume` 段**)
+- **`resume` 段每阶段结尾必更新**：72 小时赛期里上下文必然被压缩多次、大概率换会话，届时只有磁盘上的东西还在。恢复时最危险的不是忘了做什么，而是把某个口径换了个同样合理的定法——前后两问的数字就不可比了，且不会报错
 - stage 1-9: `references/rubrics.md` 对应章节 (L1 评分用)
-- **stage 1**: `competitions/cumcm/topic_specs.json` (题号 → task_type 映射)
-- stage 3, 5: `references/model_catalog.md` (通用模型清单)
+- **stage 1**: `competitions/cumcm/topic_specs.json`（题号清单 + 近五年**实际**题型 + task_type 权重键）。选定后必须写两个字段：`task_type`（题号，只供评分权重）与 **`problem_shape`（题型，从题面判定，五选一）**。**题号不是题型**——B 题最近四年零次评价类，照题号套 AHP/熵权/TOPSIS 正是组委会连续四年点名的套路化
+- **stage 3**: 先按 `problem_shape` 去 `winning_patterns.md` §1 取对应题型的算法主线，再看 `model_catalog.md` 通用清单
+- stage 5: `references/model_catalog.md` (通用模型清单)
 - **stage 5**: per-Qi 评分跑完后调 `scripts/score_artifact.py --mode aggregate_qi` 聚合
 - **stage 0 / 8 / 9**: `competitions/cumcm/current_rules.md` 存在时读取，并核对其中官方链接
 - **stage 8**: `competitions/cumcm/{winning_patterns, phrase_bank, abstract_template, paper_skeleton}.md`
 - **stage 8 经验锚点**: 用 `competitions/cumcm/empirical_abc.json`（按 题号×年份×来源 分层）；根目录那个 `empirical.json` 是上游 59 份混合样本的遗留物，只在分层数据某格样本量过小时作对照。两者都只是观察分位，**不得推断成数值门槛**
-- **stage 9**: 先做规则合规门，再用 `anti_patterns.md` 与 `rubric_overlay.json` 的 panel personas
+- **stage 5 / 8 出图**: `figures/cumcm_style.py`。**评委会打印**：这套色板灰度下有几对几乎同色（aqua↔magenta ΔL=0.017），所以第二通道（线型/填充网格/标记）是默认而非选项；`cs.save()` 会顺手出灰度校样，**必须翻一遍**
+- **stage 6**: `scripts/check_selfaudit.py` 必跑——自检承诺写了没执行、"局限"其实是没做完的活，是本 skill 演练里重复次数最多的两类失分，靠读文档挡不住
+- **stage 9**: 先做规则合规门（`scripts/check_compliance.py`，退出码非零不得提交），再跑 `check_numbers.py` 与 `check_selfaudit.py`，最后用 `anti_patterns.md` 与 `rubric_overlay.json` 的 panel personas
 - 触发反馈时: 对应 `references/feedback_layer*.md`
 - harness 适配差异 (Codex 用户必读): `references/harness_compat.md`
 

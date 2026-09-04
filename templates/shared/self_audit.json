@@ -1,0 +1,38 @@
+{
+  "_doc": "自检承诺与局限的了结台账。由 scripts/check_selfaudit.py 检查。首次用 --scaffold 从论文里扫出待办生成骨架，之后逐条填。",
+  "_quote_rule": "source_quote / quote 必须是论文原文的子串，匹配靠子串包含。改了论文措辞就要同步改这里——这是有意的：措辞变了就得重新确认它有没有被了结。",
+  "_status_doc": {
+    "done": "跑过了。必须填 result_file（results/ 下的 .json）与 verdict；verdict=fail 时还要填 action 说明改了什么或为何可接受。自检 fail 是好事，它抓到了一个错。",
+    "promised": "写下了但还没跑。**交卷前不允许留任何一条**——第 2 轮演练就是写了极限自检没执行，sin/cos 配反一路没被发现。",
+    "dropped": "决定不做。必须写 dropped_reason，且不能是『时间不够』——那说明它该降级成已知风险写进 Stage 7，不是消失。"
+  },
+  "_ruling_doc": {
+    "inherent": "题目或数据决定的固有边界，做不掉。填 basis 说明凭什么做不了。",
+    "out-of-scope": "能做，但明确不在本题要求内。填 basis 引题面依据。",
+    "should-have-done": "本来就该做掉的活。resolved=false 会直接 FAIL。判据：**这句话是不是自己指出了出路**——是就不是局限。2025B 把『精度上限由折射率的已知程度决定』写成局限，官方原话点名「按常数计算…没有达到题目的要求」。"
+  },
+  "claims": [
+    {
+      "id": "SA1",
+      "claim": "示例：β=0 与 β=90° 的极限退化，应分别回到平行与垂直两个解析解",
+      "source_quote": "示例：论文里那句承诺的原文片段，删掉本条前先删这行",
+      "from_file": "paper.tex",
+      "status": "promised",
+      "result_file": "",
+      "verdict": "",
+      "action": "",
+      "dropped_reason": ""
+    }
+  ],
+  "limitations": [
+    {
+      "id": "LM1",
+      "quote": "示例：论文里那句局限的原文片段，删掉本条前先删这行",
+      "from_file": "paper.tex",
+      "why_flagged": "",
+      "ruling": "",
+      "basis": "",
+      "resolved": false
+    }
+  ]
+}

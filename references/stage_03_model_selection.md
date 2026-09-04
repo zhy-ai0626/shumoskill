@@ -4,6 +4,7 @@ name: model_selection
 duration_h: 2-3
 inputs:
   - "stage.2.{decomposition, objective_per_subproblem, data_schema}"
+  - "root.problem_shape"
 outputs:
   - "stage.3.{candidate_models, selected_per_subproblem, rejection_log, toy_demos_passed, red_team, model_family_consistency}"
 loads_reference:
@@ -27,9 +28,33 @@ next: stage_04_foundation
 
 ---
 
+## Step 0：按题型取方法主线（5 min，必做）
+
+读 `decision_log.problem_shape`（Stage 1 从**题面**判定的五类题型之一），
+按它去 `competitions/cumcm/winning_patterns.md` §1 取对应那一节的算法主线：
+
+| `problem_shape` | winning_patterns §1 小节 |
+|---|---|
+| `mechanism_geometry` | 机理/几何/运动类 |
+| `inverse_measurement` | 工程反演/测量类 |
+| `data_statistics` | 数据/统计/决策类 |
+| `discrete_decision` | 统计决策类（给参数表、无数据附件） |
+| `compositional` | 成分数据（各分量和为常数，**方法全变**） |
+
+**不要按题号取。** `task_type`（A_optimization / B_evaluation / C_data）只用于评分权重，
+键名里的 evaluation 是上游遗留：B 题最近四年是计算几何、几何优化、统计决策、光学反演，
+**零次评价类**。照题号选方法会直接落到 AHP/熵权/TOPSIS——
+那是组委会连续四年点名的套路化，见 `winning_patterns.md` §0。
+
+`problem_shape` 为 null 时**先回 Stage 1 判定**，不要在这里现猜；
+判错题型的代价是整条方法主线都错，比任何单个模型选错都贵。
+
+---
+
 ## 输入
 
 - stage 2 输出: 子问题卡片 + 目标函数雏形 + 数据 schema
+- `decision_log.problem_shape` + `winning_patterns.md` §1 对应小节
 - `references/model_catalog.md` 必读
 
 ## 产出

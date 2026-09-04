@@ -62,7 +62,7 @@ python scripts/extract_diff.py \
 
 正式渲染还会检查提交元数据：CUMCM 要求最终题目和关键词，MCM/ICM 要求控制号、题号、题目和关键词，电工杯要求报名序号、题号、题目和关键词。CLI 参数优先于 `decision_log.paper_metadata`；`XXXX`、`X`、`keyword1` 等占位值会阻断编译。只有显式组合 `--allow-placeholders --no-compile` 才会生成带醒目标记的结构预览。
 
-CUMCM 模板按 2026 电子论文基线提供 A4、四边 2.5 cm、第一页摘要、无目录、正文最多 30 页和匿名字段最小化等 guard；它是仓库原创装配模板，不是官方模板，仍须在 Stage 0 与 Stage 9 重新核对当届通知。
+CUMCM 模板按 2026 电子论文基线提供 A4、四边 2.5 cm、第一页摘要、无目录、正文 >20 页警告（官方原文"尽量控制在 20 页以内"，>30 页才硬报错）和匿名字段最小化等 guard；它是仓库原创装配模板，不是官方模板，仍须在 Stage 0 与 Stage 9 重新核对当届通知。
 
 ```bash
 python scripts/render_paper.py \
@@ -101,6 +101,58 @@ python scripts/render_ai_usage.py \
 ```
 
 每条 AI 使用记录都必须含 `use_stage`，并完整记录 `query` + `output`，或为代码补全等非对话式工具提供 `disclosure`。`ai_usage: []` 只在团队明确核对“未使用”后填写；缺失或 `null` 会报错。
+
+### `check_numbers.py` — 数值可追溯性
+
+论文里的数字大多是从终端手抄进 LaTeX 的，抄错一位不报错、评委却能核出来。这个脚本把论文里的每个数值拿去 `results/` 下的 `.json`/`.csv` 里找同一个值，报出找不到的那些。单向检查：结果文件里有而论文没用到的值不算问题。
+
+```bash
+python scripts/check_numbers.py --paper paper.tex --results results/
+```
+
+### `scan_attachments.py` — 附件结构体检（Stage 1 有附件就必跑）
+
+题型判据里有几条依赖**附件的结构性事实**，读题面看不出来，而看漏的代价是整条方法主线错。这个脚本把它们扫出来：一组列之和是否为（近似）常数（→ 成分数据，必须 CLR）、同一对象是否有多条记录（→ 观测不独立）、名字像标签的列是否只有一个取值（→ 真标签在别处，监督学习会退化成零正例且不报错）、是否有 Excel 合并单元格残留（→ 分组前必须 ffill）。
+
+```bash
+python scripts/scan_attachments.py <附件目录或文件>
+python scripts/scan_attachments.py 附件1.xlsx --json
+```
+
+**这是体检不是门**，有发现也退出 0。但 `compositional` 与 `repeated_measures` 两类会改变方法主线，必须写进 `decision_log.problem_shape_modifiers`。
+
+实测：2021B 六个"选择性"列之和恒为 100.0000（114 行无一例外）；2022C 化学成分和集中在 100 附近但范围 71.89~100（题面自己给了 85%~105% 的有效区间）；2025C 女胎表『胎儿是否健康』605 行全是"是"，真标签在『染色体的非整倍体』列。
+
+### `check_selfaudit.py` — 自检承诺与局限的了结检查（Stage 6 与 Stage 9 强制项）
+
+针对本 skill 演练里重复次数最多的失效模式：**写了自检却没执行**，以及**把本来就该做掉的活写成了"局限"**。脚本扫论文里的三类句子——自检承诺、局限（含整个「局限」小节）、自陈取常数/文献值——每一类都必须在 `state/self_audit.json` 台账里被了结，否则 FAIL。
+
+台账条目用 `source_quote` 引用它所了结的那句原文，匹配靠子串包含，不做模糊匹配。**承诺写在论文里而台账没有也算 FAIL**：只查台账等于自己查自己，而演练里栽掉的恰恰是"承诺只写在散文里"。
+
+```bash
+# 首次：扫出待办生成台账骨架
+python scripts/check_selfaudit.py --paper paper.tex --workspace paper_workspace/ \
+    --scaffold > state/self_audit.json
+
+python scripts/check_selfaudit.py --ledger state/self_audit.json \
+    --paper paper.tex --workspace paper_workspace/ --results results/
+```
+
+模板与字段含义见 `templates/shared/self_audit.json`。退出码 1 = 有未了结项，2 = 没跑成。
+
+### `check_compliance.py` — 提交前合规自查（Stage 9 强制项）
+
+把 `stage_09_review.md` 的散文清单里能机器判定的部分变成一条命令：A4、≤20 MB、摘要单页、无目录/承诺书、正文页数、**中文能否从 PDF 提取**、AI 声明三项、附录源程序、正文与 **PDF 元数据**里的身份信息、未解析交叉引用，以及支撑材料压缩包的大小、是否含源程序、是否含 `AI工具使用详情.pdf`、有无凭据文件。
+
+```bash
+python scripts/check_compliance.py --paper paper_output/paper.pdf \
+    --support support_materials/支撑材料.zip
+python scripts/check_compliance.py --paper paper_output/paper.pdf --json
+```
+
+退出码 1 表示有 FAIL，不得提交（WARN 与人工项不影响退出码）；2 表示没跑成（文件不存在、缺 pypdf、或传了非 cumcm 的赛事）。`--json` 里的 `compliance_checks` 可直接写进 Stage 9，其中 `null` 表示该项没测到，必须人工确认后改成布尔值。
+
+只编码 CUMCM 2026 规则。MCM/ICM 与电工杯条款不同，脚本会直接拒绝运行而不是冒充检查。
 
 ## 离线维护工具
 

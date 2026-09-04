@@ -1,9 +1,15 @@
-# 用户运行时产物
+# 用户运行时产物。
+# 注意：这些是**用户项目目录**下的产物（见 SKILL.md 的路径解析协议：
+# 用户产物一律在 <cwd>/ 下，不写回 skill）。列在这里只是防止有人直接在
+# skill 目录里跑出东西来。
+#
+# **不要写 `figures/`** —— skill 自己有一个 figures/ 源码目录
+# （样式模块 + 范例脚本），整目录忽略会把它弄丢。只忽略生成物 figures/gallery/。
 state/decision_log.json
 state/scores.json
 state/iteration_counts.json
 results/
-figures/
+figures/gallery/
 paper_workspace/
 paper_output/
 *.aux

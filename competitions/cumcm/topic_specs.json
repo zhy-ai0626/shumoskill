@@ -1,5 +1,17 @@
 {
-  "_doc": "CUMCM 题号与 task_type 路由提示。只用于候选题导航和评分权重 fallback；题型、交付物与子问数必须从当届题面重新提取。",
+  "_doc": "CUMCM 题号导航 + 评分权重路由。**题号不是题型**——见 _题号不等于题型。本文件只用于 Stage 1 的候选题清单与 score_artifact.py 的权重 fallback，不用于选方法。选方法一律走 winning_patterns.md §1 的五类题型主线。",
+  "_题号不等于题型": {
+    "为什么要专门写这一条": "上游把题号直接当题型（A 优化 / B 评价 / C 数据），本项目的实证否掉了这个映射。B 题最近四年是：2022B 计算几何定位、2023B 多波束测线（几何+优化）、2024B 统计决策、2025B 光学反演——**没有一年是评价指标体系**。上游还把 B 题的 typical_problems 写成 AHP/熵权/TOPSIS，那恰好是组委会连续四年点名的套路化方法，等于在 Stage 1 就把人往反模式上引。",
+    "怎么定题型": "从当届题面提取，判据见 competitions/cumcm/题型与算法对照.md 第一节：给物理规律/几何关系且数据量小 → 机理/几何/运动类；给测量信号要反推物理量 → 工程反演/测量类；给观测表要找关系/分组/判定 → 数据/统计类；给参数表无数据附件要做离散决策 → 统计决策类；各分量之和为常数 → 成分数据类。",
+    "写到哪": "decision_log.problem_shape，Stage 1 定、Stage 3 据此选方法主线。"
+  },
+  "_problem_shapes": [
+    "mechanism_geometry",
+    "inverse_measurement",
+    "data_statistics",
+    "discrete_decision",
+    "compositional"
+  ],
   "competition": "cumcm",
   "official_name": "全国大学生数学建模竞赛",
   "duration_h": 72,
@@ -8,54 +20,48 @@
   "compiler": "xelatex",
   "default_subproblem_count": null,
   "subproblem_count_iqr": null,
+  "_topics_doc": "本 skill 只覆盖本科组 A/B/C。D/E 属专科组，已移除——留着会让 Stage 1 把不该选的题列进候选。",
   "topics": {
     "A": {
       "label": "A 题",
       "category": "本科组-理工",
-      "primary_type": "optimization",
       "task_type_key": "A_optimization",
-      "typical_problems": ["物理建模", "工程优化", "连续系统"],
-      "expected_subproblem_count": null
+      "_task_type_doc": "仅用于评分权重查表，**不是题型判断**。",
+      "近年实际题型": {
+        "2021A": "机理/几何（FAST 主动反射面）",
+        "2022A": "机理/物理（波浪能装置）",
+        "2023A": "机理+连续优化（定日镜场）",
+        "2024A": "机理/几何运动（板凳龙）",
+        "2025A": "机理/几何/运动（烟幕遮蔽）"
+      },
+      "note": "A 题近五年确实稳定偏机理类，但仍须按题面复核，不得直接套用。"
     },
     "B": {
       "label": "B 题",
       "category": "本科组-理工",
-      "primary_type": "evaluation",
       "task_type_key": "B_evaluation",
-      "typical_problems": ["评价指标体系", "AHP/熵权/TOPSIS", "组合赋权"],
-      "expected_subproblem_count": null
+      "_task_type_doc": "仅用于评分权重查表。**键名里的 evaluation 是上游遗留，不代表 B 题是评价类**——见下方近年实际题型。",
+      "近年实际题型": {
+        "2022B": "计算几何/定位（无人机纯方位无源定位）",
+        "2023B": "几何+优化（多波束测线）",
+        "2024B": "统计决策（生产过程决策，给参数表无数据）",
+        "2025B": "工程反演/测量（光学薄膜厚度反演）"
+      },
+      "note": "★ 四年零次评价类。看到 B 题就上 AHP/熵权/TOPSIS 是本项目反模式清单里被点名最多的错误。"
     },
     "C": {
       "label": "C 题",
       "category": "本科组-数据/统计",
-      "primary_type": "data_analysis",
       "task_type_key": "C_data",
-      "typical_problems": ["数据预处理", "回归/时序/聚类", "异常检测"],
-      "expected_subproblem_count": null
-    },
-    "D": {
-      "label": "D 题",
-      "category": "专科组-工程",
-      "primary_type": "industrial",
-      "task_type_key": "D_industrial",
-      "typical_problems": ["工业流程", "调度", "控制系统"],
-      "expected_subproblem_count": null
-    },
-    "E": {
-      "label": "E 题",
-      "category": "专科组-创新",
-      "primary_type": "creative",
-      "task_type_key": "E_creative",
-      "typical_problems": ["开放性建模", "社会问题", "跨学科"],
-      "expected_subproblem_count": null
-    },
-    "F": {
-      "label": "F 题",
-      "category": "专科组-理工 (历史保留)",
-      "primary_type": "evaluation",
-      "task_type_key": "B_evaluation",
-      "typical_problems": ["评价类", "近年合并入 B"],
-      "expected_subproblem_count": null
+      "_task_type_doc": "仅用于评分权重查表。",
+      "近年实际题型": {
+        "2021C": "规划/优化（生产企业订购与转运）",
+        "2022C": "成分数据（古代玻璃制品）",
+        "2023C": "数据+优化（蔬菜定价与补货）",
+        "2024C": "大规模规划（农作物种植策略）",
+        "2025C": "数据/统计（NIPT 时点选择）"
+      },
+      "note": "C 题给数据附件是稳定特征，但任务未必是统计——2021C/2024C 主体是规划优化，2022C 是成分数据这一特殊支。"
     }
   }
 }

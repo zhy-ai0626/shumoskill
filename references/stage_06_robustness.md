@@ -223,12 +223,47 @@ for p_value, c_value, b_value in samples:
 那它就不是局限，是没做完的工作。真正的局限长这样：
 "数据里没有 Y，所以 X 无法辨识"——**局限必须指向一个外部约束，而不是一个选择。**
 
+### 用脚本兜底，别只靠读
+
+上面两步在演练里的失败方式**不是没写，而是写了没做**——所以它不能只是本文档里的
+一段话。用台账把它变成外部可判定的：
+
+```bash
+# 首次：从论文里扫出所有待了结的句子，生成台账骨架
+python <skill>/scripts/check_selfaudit.py --paper paper.tex \
+    --workspace paper_workspace/ --scaffold > state/self_audit.json
+
+# 之后每次改完论文都跑
+python <skill>/scripts/check_selfaudit.py --ledger state/self_audit.json \
+    --paper paper.tex --workspace paper_workspace/ --results results/
+```
+
+它扫三类句子，每一类都必须在台账里被了结：
+
+| 类别 | 怎么算了结 |
+|---|---|
+| 自检承诺（「极限退化」「量纲」「守恒」「自检」…） | `status=done` + 结果文件 + verdict；或 `dropped` + 真实理由 |
+| 局限（句式命中，**或整个「局限」小节内的每一句**） | 裁定成 `inherent` / `out-of-scope` / `should-have-done` |
+| 自陈取定值（「取常数」「取文献值」…） | 同上裁定，重点回题面确认这个量是不是待估量（反模式 Z22） |
+
+两处设计是有意的，不要绕开：
+
+- **承诺写在论文里而台账没有，同样 FAIL。** 只查台账等于自己查自己——
+  第 2 轮演练正是承诺只写在散文里，从没进过任何清单。
+- **`should-have-done` 且 `resolved=false` 直接 FAIL。** 这就是 2025B 那处：
+  裁对了性质却不去做，等于把失分点写进了论文。
+
+台账模板在 `templates/shared/self_audit.json`，字段含义见其中的 `_status_doc`
+与 `_ruling_doc`。
+
 ## 退出条件
 
 1. 核心结论至少有一种与其风险匹配的验证；
 2. 范围、数据切分、样本预算和判断标准可追溯；
 3. 结果包含定量变化及适用边界，不伪造失败点；
 4. L2 回检写入状态；
-5. L1 全维达到工作流阈值。
+5. L1 全维达到工作流阈值；
+6. `scripts/check_selfaudit.py` 退出码为 0——没有未执行的自检承诺，
+   也没有被裁定为 `should-have-done` 却仍未解决的"局限"。
 
 → 跳转 `stage_07_evaluation.md`

@@ -97,7 +97,7 @@ class PackageIntegrityTests(unittest.TestCase):
         self.assertEqual(stages, list(range(10)))
 
     def test_anti_pattern_counts_and_deferred_state(self) -> None:
-        expected = {"cumcm": 64}   # A–Z 全部条目；Z 节已扩到 Z22
+        expected = {"cumcm": 66}   # A–Z 全部条目；Z 节已扩到 Z24
         pattern = re.compile(r"^###\s+([A-Z]\d+)\.\s", re.MULTILINE)
 
         for competition, count in expected.items():
@@ -116,6 +116,30 @@ class PackageIntegrityTests(unittest.TestCase):
         )
         declared = decision_log["stages"]["9"]["anti_patterns_check"]["total"]
         self.assertIsNone(declared)
+
+    def test_decision_log_carries_resume_state(self) -> None:
+        """72 小时赛期里上下文必然被压缩多次，届时只有磁盘上的东西还在。
+
+        2023A 演练做了一次中断恢复审计：schema 3.1 原本对『被打断时在做什么』
+        『下一步做什么』『哪些口径已经定死』全无归宿。恢复时最危险的不是忘了做什么，
+        而是把某个口径换个同样合理的定法——数字不可比，且任何脚本都不会报错。
+        """
+        decision_log = json.loads(
+            (ROOT / "templates" / "shared" / "decision_log.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        resume = decision_log["resume"]
+        for key in ("in_flight", "next_actions", "open_questions",
+                    "reproduce", "settled_conventions", "last_write_iso"):
+            self.assertIn(key, resume)
+        for key in ("stage", "qi", "action"):
+            self.assertIn(key, resume["in_flight"])
+        for key in ("entrypoints", "seed", "env_notes"):
+            self.assertIn(key, resume["reproduce"])
+        qi_doc = decision_log["stages"]["5"]["_qi_status_doc"]
+        self.assertIn("in_progress", qi_doc,
+                      "qi_status 必须能表达『做了一半』，否则中断恢复时看不出来")
 
     def test_effective_dimension_weights_only_use_valid_dimensions(self) -> None:
         table = json.loads(

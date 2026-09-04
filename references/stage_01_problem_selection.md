@@ -9,6 +9,8 @@ inputs:
 outputs:
   - "stage.1.{selected, rationale, rejected_alternatives, candidates_assessed, risks_identified}"
   - "root.task_type"
+  - "root.problem_shape"
+  - "root.problem_shape_modifiers"
 loads_reference:
   - "references/rubrics.md§Stage_1"
   - "references/model_catalog.md§0"
@@ -25,9 +27,13 @@ next: stage_02_analysis
 
 ## 目标
 
-在题号体系内 (cumcm A-E / mcm A-F / diangong A-B), 选出**最契合团队优势 + 时间预算 + 数据可获取性**的一题，并让选择、否决与后续变更都有据可查。
+在本科组 A / B / C 三题中，选出**最契合团队优势 + 时间预算 + 数据可获取性**的一题，
+并让选择、否决与后续变更都有据可查；同时**从题面判定题型**（不是从题号推）。
 
-**第一步必做**: 加载 `competitions/<comp>/topic_specs.json` 获取本竞赛的题号清单与每题 `task_type_key`; 选定后写 `decision_log.task_type` (供 stage 3+ 的 dim_weights 加权)。
+**第一步必做**: 加载 `competitions/<comp>/topic_specs.json` 获取题号清单与每题 `task_type_key`；选定后写两个字段：
+
+- `decision_log.task_type` ← `topic_specs.json[selected].task_type_key`。**只供 stage 3+ 的 dim_weights 查表**，键名里的 optimization/evaluation/data 是上游遗留，不是题型判断。
+- `decision_log.problem_shape` ← **从题面判定的题型**，取值见 `topic_specs.json._problem_shapes` 五选一。判据见 `competitions/cumcm/题型与算法对照.md` 第一节。**Stage 3 按它选方法主线**（`winning_patterns.md` §1 五类），所以判错的代价远大于 task_type 判错。
 
 ---
 
@@ -51,16 +57,39 @@ next: stage_02_analysis
 
 ```bash
 # 路径: <skill>/competitions/<comp>/topic_specs.json
-# 加载后得到本竞赛的题号清单 (cumcm A-E / mcm A-F / diangong A-B) 与每题的 task_type_key
+# 加载后得到题号清单 (本 fork 只有 cumcm A/B/C) 与每题的 task_type_key + 近五年实际题型
 ```
 
-题号体系总览 (引用 `topic_specs.json`):
+本 fork 只覆盖 **CUMCM 本科组 A / B / C**，中文论文、xelatex、72 小时。
 
-| Competition | 题号 | 默认子问数 | 主要类型 |
-|---|---|---|---|
-| cumcm | A 优化, B 评价, C 数据, D 工业, E 创新 | 3-5 | 中文论文 |
-| mcm   | A 连续, B 离散, C 数据, D-F 跨学科方向 | 3-6 | 英文 + 当年题目明确要求的特殊交付物 |
-| diangong | A 电力工程, B 能源数据 | 6-8 | 中文工程 |
+> **⚠ 题号不是题型。** 上游那张「A 优化 / B 评价 / C 数据」的表已删除，因为它是错的：
+> B 题最近四年是 2022B 计算几何、2023B 几何+优化、2024B 统计决策、2025B 光学反演，
+> **零次评价类**。上游还把 B 题的典型方法写成 AHP/熵权/TOPSIS——
+> 那恰好是组委会连续四年点名的套路化方法，照着选就直接踩反模式。
+>
+> `topic_specs.json` 里每题都列了近五年的**实际**题型，用它做先验可以，
+> 但**题型必须从当届题面重新判定**，判据见 `题型与算法对照.md` 第一节。
+
+### Step 0.5: 附件结构体检 (10 min, 有附件就必做)
+
+```bash
+python <skill>/scripts/scan_attachments.py <附件目录>
+```
+
+题型判据里有几条依赖**附件的结构性事实**，读题面看不出来：
+
+| 扫到什么 | 意味着 |
+|---|---|
+| `compositional` / `compositional_approx` | 有一组列之和为（近似）常数 → **成分数据，方法全变**，必须 CLR。即使主线不是成分数据类，也要加进 `problem_shape_modifiers` |
+| `repeated_measures` | 同一对象多条记录 → 观测不独立，回归要用混合效应/GEE |
+| `constant`（列名像标签却只有一个取值） | **真标签在别处**。拿它做监督学习会得到零正例的退化模型，且不报错 |
+| `merged_cells` | Excel 合并单元格残留，当分组键前必须 `ffill()`，否则每组只剩 1 行 |
+
+实测三例：2021B 六个"选择性"列之和恒为 100（主线是数据统计，但成分约束是真的）；
+2022C 化学成分和集中在 100 附近、范围 71.89~100（题面自己给了 85%~105% 的有效性区间）；
+2025C 女胎表『胎儿是否健康』605 行全是"是"，真标签在『染色体的非整倍体』列。
+
+结果写进 `decision_log.problem_shape_modifiers`。
 
 ### Step 1: 候选题信息提取 (45 min,可并行)
 
@@ -135,6 +164,8 @@ next: stage_02_analysis
 
 **同步写 root 字段**:
 - `decision_log.task_type` ← `topic_specs.json[selected].task_type_key` (e.g. `A_optimization` for cumcm-A)
+- `decision_log.problem_shape` ← 五类题型之一，**从题面判定**，并写明判定依据（题面里的哪句话/哪个附件特征）。
+  与 `topic_specs.json` 里该题号的"近年实际题型"不一致时，**以题面为准**，并在 rationale 里说明为什么不同。
 - `decision_log.stages.5.qi_count` ← 优先使用官方题面解析出的实际子问题数；题面未到时才用 `topic_specs.json[selected].expected_subproblem_count` 做 provisional 估计，并在 stage 2 覆盖
 - `decision_log.stages.5.qi_weights` ← `[1.0] * qi_count` (默认均匀, 用户后续可在 stage 5 调整)
 

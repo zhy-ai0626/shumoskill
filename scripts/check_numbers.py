@@ -89,15 +89,25 @@ def _strip_noise(text: str) -> str:
 
 NUM_RE = re.compile(
     r"(?<![\w.])"                       # 左边不能紧挨字母/数字/点
-    r"[-+]?\d{1,3}(?:,\d{3})*(?:\.\d+)?"  # 1,234.56
+    # 两种写法：带千分逗号的 1,234.56，或不带分隔符的一长串数字。
+    # 原来只写了 `\d{1,3}(?:,\d{3})*`，四位以上的**裸数字**（如 119120）
+    # 一个都匹配不上——不是报成未追溯，而是**静默跳过不检查**。
+    r"[-+]?(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?"
     r"(?:\s*\\?times\s*10\^\{?[-+]?\d+\}?|[eE][-+]?\d+)?"  # 科学计数
     r"(?![\w])"
 )
 
 
+# LaTeX 里的千分位是细空格 `\,`：119\,120 表示 119120。
+# 不先合并的话会被切成 119 与 120 两个数，双双报成"结果文件里找不到"——
+# 这类误报会让人直接不信任这个脚本（2023A 演练实测，29 个未追溯值里 7 个是它造成的）。
+THIN_SPACE_THOUSANDS = re.compile(r"(?<=\d)\\[,;:]\s*(?=\d{3}(?!\d))")
+
+
 def extract_numbers(text: str, min_digits: int = 2) -> list[tuple[float, str]]:
     """返回 [(数值, 原文片段)]。min_digits 过滤掉只有一位有效数字的值。"""
     out: list[tuple[float, str]] = []
+    text = THIN_SPACE_THOUSANDS.sub("", text)
     for m in NUM_RE.finditer(_strip_noise(text)):
         raw = m.group(0)
         norm = raw.replace(",", "").replace(" ", "")

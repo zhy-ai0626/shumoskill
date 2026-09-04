@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import importlib.util
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -42,7 +43,9 @@ MODELING_MODULES = ("numpy", "scipy", "pandas", "matplotlib", "sklearn")
 # 合规链路的依赖：render_ai_usage.py 用 reportlab 生成《AI工具使用详情.pdf》。
 # 那个文件名是 2026 规定写死的强制支撑材料，缺了它等于交不齐材料——
 # 所以这一项必须进 Stage 0 预检，而不是等到 Stage 9 才发现。
-COMPLIANCE_MODULES = ("reportlab",)
+# pypdf 供 check_compliance.py 读最终 PDF；缺了它 Stage 9 的合规自查整条跑不了，
+# 同样必须在开赛前就发现，而不是交卷前 20 分钟。
+COMPLIANCE_MODULES = ("reportlab", "pypdf")
 CORE_SECTION_MARKERS = {
     "abstract",
     "1_problem_restate",
@@ -137,6 +140,107 @@ def _template_packages(competition: str) -> list[str]:
 
 SMOKE_TEX = {"cumcm": SKILL_ROOT / "templates" / "latex" / "cumcm" / "smoke.tex"}
 SMOKE_TIMEOUT_S = 120
+GATE_TIMEOUT_S = 60
+
+
+def _smoke_gates() -> tuple[bool, str]:
+    """真跑一次三个提交门，而不是只确认文件存在。
+
+    `package-structure` 只能证明脚本在，证明不了它能跑：语法错、import 错、
+    依赖缺失都要到 Stage 9 交卷前才暴露，而那时没有时间修。
+    这里给每个门喂一份**故意有问题**的最小输入，要求它**报出问题**（退出码 1）——
+    只测"能加载"太弱，那样脚本里判定逻辑整段失效也照样通过。
+
+    退出码约定：0 = 没查出问题，1 = 查出问题，2 = 没跑成（缺文件/缺依赖/参数错）。
+    这里期望 1；出现 2 或异常退出即为不就绪。
+    """
+    import tempfile
+
+    scripts = SKILL_ROOT / "scripts"
+    results: list[str] = []
+    failures: list[str] = []
+
+    with tempfile.TemporaryDirectory(prefix="mathmodel-gates-") as tmp:
+        work = Path(tmp)
+        (work / "results").mkdir()
+        (work / "results" / "r.json").write_text(
+            '{"eta": 0.5038}', encoding="utf-8")
+        # 植入两个问题：一句没进台账的自检承诺，一个结果文件里没有的数值
+        (work / "paper.tex").write_text(
+            "下面对 beta=0 与 beta=90 做极限退化自检。\n"
+            "最终效率为 0.5038，另有一个查不到的数 0.7391。\n",
+            encoding="utf-8")
+        (work / "ledger.json").write_text(
+            '{"claims": [], "limitations": []}', encoding="utf-8")
+
+        def run(name: str, argv: list[str], expect: int, marker: str) -> None:
+            """跑一个门。**退出码不够用**：Python 抛 SyntaxError / ImportError 时
+            退出码也是 1，与"门正确报出问题"撞车——实测在 check_numbers.py 末尾
+            追加一行非法语法，只看退出码的版本照样报通过。
+            所以还要求 stdout 出现该门特有的标记，且 stderr 里没有 traceback。
+            """
+            # 必须显式指定 encoding="utf-8"。`text=True` 会按 locale 解码，
+            # 在中文 Windows 上是 GBK，而子进程被管道接走时 _console.init() 已切到
+            # UTF-8 —— 解码在 subprocess 的读取线程里抛 UnicodeDecodeError，
+            # 父进程拿到的 stdout 是 **None**，而且**看不到任何异常**。
+            # 结果是标记匹配永远不成立，这个检查会静默地什么都测不出来。
+            env = dict(os.environ, PYTHONIOENCODING="utf-8")
+            try:
+                proc = subprocess.run(
+                    [sys.executable, str(scripts / name)] + argv,
+                    cwd=work, capture_output=True,
+                    encoding="utf-8", errors="replace", env=env,
+                    check=False, timeout=GATE_TIMEOUT_S)
+            except subprocess.TimeoutExpired:
+                failures.append("%s 超时" % name)
+                return
+            except OSError as exc:
+                failures.append("%s 起不来: %s" % (name, exc))
+                return
+            err = proc.stderr or ""
+            if "Traceback" in err or "SyntaxError" in err or "ImportError" in err:
+                failures.append("%s 崩了：%s"
+                                % (name, err.strip().splitlines()[-1][:120]))
+                return
+            if proc.returncode != expect:
+                tail = (err or proc.stdout or "").strip().splitlines()
+                failures.append("%s 退出码 %d（期望 %d）%s"
+                                % (name, proc.returncode, expect,
+                                   "：" + tail[-1][:120] if tail else ""))
+                return
+            if marker not in (proc.stdout or ""):
+                failures.append("%s 退出码对，但输出里没有 %r——判定逻辑可能没跑到"
+                                % (name, marker))
+                return
+            results.append(name)
+
+        run("check_selfaudit.py",
+            ["--ledger", "ledger.json", "--paper", "paper.tex"], 1,
+            "unlogged-promise")
+        run("check_numbers.py",
+            ["--paper", "paper.tex", "--results", "results/"], 1,
+            "找不到")
+
+        # 合规门要一份真 PDF。用 reportlab 造一份空白的——它必然违反多条规则，
+        # 正好用来验证"能读 PDF 且判定逻辑会报错"。reportlab 已是 compliance-stack 的依赖。
+        pdf = work / "paper.pdf"
+        try:
+            from reportlab.lib.pagesizes import A4       # noqa: WPS433
+            from reportlab.pdfgen import canvas          # noqa: WPS433
+
+            c = canvas.Canvas(str(pdf), pagesize=A4)
+            c.drawString(72, 720, "smoke")
+            c.showPage()
+            c.save()
+        except Exception as exc:                          # noqa: BLE001
+            failures.append("造不出测试 PDF（reportlab 不可用）：%s" % exc)
+        else:
+            run("check_compliance.py", ["--paper", "paper.pdf"], 1, "合规自查")
+
+    if failures:
+        return False, "；".join(failures)
+    return True, "%s 三门均按预期报出植入的问题" % "/".join(
+        n.replace("check_", "").replace(".py", "") for n in results)
 
 
 def _render_smoke(competition: str) -> tuple[bool, str]:
@@ -218,7 +322,13 @@ def run_checks(
         "scripts/extract_diff.py",
         "scripts/render_paper.py",
         "scripts/render_ai_usage.py",
+        "scripts/check_numbers.py",
+        "scripts/check_compliance.py",
+        "scripts/check_selfaudit.py",
+        "scripts/scan_attachments.py",
+        "figures/cumcm_style.py",
         "templates/shared/ai_usage_ledger.json",
+        "templates/shared/self_audit.json",
         "templates/latex/cumcm/main.tex",
     )
     missing = [item for item in required_paths if not (SKILL_ROOT / item).is_file()]
@@ -477,6 +587,20 @@ def run_checks(
         else f"缺少 {', '.join(missing_compliance)}，无法生成《AI工具使用详情.pdf》",
         "python -m pip install " + " ".join(missing_compliance)
         if missing_compliance else None,
+    ))
+
+    # 真跑一次三个提交门。它们是 Stage 6/9 的强制项，坏了必须在 Stage 0 就知道。
+    gates_ok, gates_detail = _smoke_gates()
+    checks.append(_check(
+        "gates-smoke",
+        gates_ok,
+        gates_detail,
+        "提交门跑不通就等于没有门。逐个手动复现：\n"
+        "  python scripts/check_selfaudit.py --paper <论文.tex> --scaffold\n"
+        "  python scripts/check_numbers.py --paper <论文.tex> --results results/\n"
+        "  python scripts/check_compliance.py --paper <论文.pdf>\n"
+        "退出码 2 表示没跑成（多半缺 pypdf 或 reportlab），不是论文有问题。"
+        if not gates_ok else None,
     ))
 
     if require_modeling:
