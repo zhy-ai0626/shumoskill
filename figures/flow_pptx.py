@@ -311,15 +311,24 @@ def slide_overall(deck: Deck) -> None:
     deck.connect(b_sc, BOTTOM, b_q1, TOP, elbow=True)
     deck.connect(b_q1, RIGHT, b_q2, LEFT)
     deck.connect(b_q2, RIGHT, b_q3, LEFT)
-    deck.label(1.0 + qw - 0.35, 5.75, 2.0, 0.5, "解沿用", size=8.0)
-    deck.label(1.0 + 2 * qw + qgap - 0.35, 5.75, 2.0, 0.5, "解沿用", size=8.0)
+    # 「解沿用」要压在箭头正上方。原来写的是 `1.0 + qw - 0.35`，居中后
+    # label 中心落在 7.25，而箭头中心在 6.95 —— 两个都右偏 0.3 cm。
+    # 直接按"缝隙中心"算，别再用手调的偏移量。
+    lab_w = 2.0
+    for k in (1, 2):
+        gap_mid = 1.0 + k * qw + (k - 0.5) * qgap
+        deck.label(gap_mid - lab_w / 2, 5.75, lab_w, 0.5, "解沿用", size=8.0)
     for b in (b_q1, b_q2, b_q3):
         deck.connect(b, BOTTOM, b_ck, TOP)
     deck.connect(b_ck, BOTTOM, b_se, TOP)
     deck.connect(b_se, BOTTOM, b_out, TOP)
     # 反馈环：回检不过回到建模。虚线折线，走左侧空白，不跨任何主干线。
-    deck.connect(b_ck, LEFT, b_q1, BOTTOM, elbow=True, dashed=True)
-    deck.label(0.35, 8.55, 3.1, 0.55, "不一致 → 回到建模", size=8.0)
+    # 终点接 Q1 的**左边**而不是下边：下边中点已经是 Q1→回检 那根箭头的起点，
+    # 两根线共用一个锚点会挤成一团，而且"返工箭头从出口边扎回去"读着别扭。
+    deck.connect(b_ck, LEFT, b_q1, LEFT, elbow=True, dashed=True)
+    # 标签压在虚线的水平段下方（b_ck 左边中点 y≈10.1），不跨竖直段。
+    deck.label(0.35, 10.25, 3.0, 0.5, "不一致 → 回到建模", size=8.0,
+               align="left")
 
     deck.label(0.7, 14.5, 18.6, 0.45,
                "画法依据：44 篇官方展示论文中 52% 有流程图，"
@@ -341,7 +350,10 @@ def slide_per_question(deck: Deck) -> None:
                size=11.5, align="left", color=cs.INK)
     deck.legend(0.9, 1.25, LEGEND)
 
-    cx, cw = 4.2, 9.4
+    # 主干列右移、略收窄：左边要腾出 5.5 cm 给检查表（原来只有 3.9 cm，
+    # 最长一行 5.21 cm，三行被迫折行）。5.9 + 8.8 = 14.7，列心 10.3，
+    # 右侧剩 5.3 cm 放"自检不过"标签，够。
+    cx, cw = 5.9, 8.8
     rows = [
         ("input", ["输入", "上游结果 + 附件第 X 列 + 题给参数"]),
         ("model", ["数学模型", "决策变量 / 目标函数 / 约束（符号级）"]),
@@ -362,11 +374,12 @@ def slide_per_question(deck: Deck) -> None:
         deck.connect(a, BOTTOM, b, TOP)
     # 自检不过 → 回到模型。虚线走右侧。
     deck.connect(boxes[3], RIGHT, boxes[1], RIGHT, elbow=True, dashed=True)
-    deck.label(14.0, 5.9, 5.3, 1.1,
+    deck.label(15.0, 5.9, 4.6, 1.1,
                ["自检不过", "→ 改模型，不是改数"], size=8.0)
 
-    # 左侧提示条：这三句是讲评里连年重复的失分点，画在图边当检查表
-    deck.label(0.3, 3.0, 3.6, 4.6,
+    # 左侧提示条：这三句是讲评里连年重复的失分点，画在图边当检查表。
+    # 宽度必须 ≥ 最长一行（实测 5.21 cm），否则折行后项目符号会错位。
+    deck.label(0.3, 3.0, 5.5, 4.6,
                ["写论文时对着这张图查：", "",
                 "· 算法框空着 → 论文缺「具体算法」",
                 "· 自检框空着 → 缺自检，或写成了「局限」",
@@ -533,8 +546,18 @@ def preview(pptx_path: str, png_path: str) -> list[str]:
                     warnings.append(
                         "文字过长，%s 里 %r 需要 %.1f cm 而框只有 %.1f cm"
                         % (shape.name, line[:16], tw, usable))
+                # **无填充的 label 也要量。** 这两条警告原先都挂在 `if filled`
+                # 下，于是 label 从来没被检查过：slide 2 左侧提示条 3.48 cm 可用、
+                # 最长一行实测 5.21 cm，溢出 1.7 cm，四行里三行被迫折行，
+                # 渲染出来就是"项目符号缩进忽大忽小"，而自检一路报"✓ 装得下"。
+                # label 的行是手写死的，不指望自动折行，所以判据比框更严：
+                # 单行超过框宽就算溢出。
+                elif not filled and tw > usable:
+                    warnings.append(
+                        "label 文字溢出：%s 里 %r 需要 %.2f cm，框只有 %.2f cm"
+                        % (shape.name, line[:16], tw, usable))
             line_cm = max(sizes) * PT_CM * 1.5
-            if filled and need_rows * line_cm > h + 0.05:
+            if need_rows * line_cm > h + 0.05:
                 warnings.append(
                     "文字换行后高度溢出：%s 需要约 %.2f cm，框高 %.2f cm"
                     % (shape.name, need_rows * line_cm, h))
