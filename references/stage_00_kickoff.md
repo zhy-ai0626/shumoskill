@@ -120,6 +120,19 @@ which git
 若队伍决定接受 Pandoc/docx 降级方案，把这个决定写进 `decision_log.events.log`，
 并在 Stage 8 选模板时按降级路径走。
 
+**绘图环境同样是 Stage 0 的检查项，理由和编译链一样。** 一等奖论文图数中位
+**20 张**，绘图链坏掉等于整条呈现链断掉——而它坏起来是静默的：装了 matplotlib
+但没有中文字体，图里每个汉字都是一个空方框，matplotlib 只刷一条 findfont 警告，
+**图照出**。`doctor.py` 的 `cn-font` 检查会找到可用字体后**真渲染一张带中文和
+单位的图**（只查字体名在不在列表里不够：字体损坏、缓存过期都会让列表里有名字
+而实际画不出来）。
+
+再裸跑一次绘图起手式，六段全出才算通；它同时验了 Pillow（灰度校样）：
+
+```bash
+python <skill>/figures/starter.py --out ./_figcheck
+```
+
 如缺依赖, 一键安装:
 ```bash
 pip install -r <skill>/templates/shared/requirements.txt
@@ -179,6 +192,16 @@ cp <skill>/templates/shared/decision_log.json state/decision_log.json   # 仅当
 ---
 
 ## L1 Rubric (5 维 × 1-10)
+
+<!-- RUBRIC:BEGIN 0 -->
+| 维度 | 满分行为 (10) | 失败行为 (1) |
+|------|-------------|-------------|
+| 1. 角色分工明确性 (`1_role_clarity`) | 按实际人数覆盖建模/编程/写作责任，并设置互备 | 职责和交接人不明确 |
+| 2. 工具就绪度 (`2_tools_ready`) | 题目需要的计算、写作、版本与沟通工具已验证 | 关键工具尚未试运行 |
+| 3. 时间盒规划 (`3_time_planning`) | 按实际截止时间设置里程碑、关键路径和缓冲 | 无计划 |
+| 4. 题目预扫信号 (`4_problem_scan`) | 已识别问题域 (优化/预测/评价等) | 未读题 |
+| 5. 协作约定 (`5_collab_protocol`) | 命名规范、版本控制、daily standup 时间 | 无规范 |
+<!-- RUBRIC:END 0 -->
 
 参考 `rubrics.md` Stage 0 节。每维必须 ≥7 才通过。
 

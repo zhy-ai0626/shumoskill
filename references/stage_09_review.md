@@ -102,7 +102,21 @@ Cross-check the final paper against `decision_log.json` and the saved artifacts:
       --paper paper.tex --workspace paper_workspace/ --results results/
   ```
 
-- every figure/table path resolves and its caption matches the content;
+- every figure/table path resolves and its caption matches the content
+  —— **路径与交叉引用别用眼看，跑脚本**：
+
+  ```bash
+  python <skill>/scripts/check_figures.py --paper paper.tex \
+      --figures figures/ --topic <A|B|C>
+  ```
+
+  FAIL 两类，都是评委看得见的：`\includegraphics` 指向的文件不存在
+  （**LaTeX 缺图不一定报错**，有的引擎只在图位置留一个方框，PDF 照样出）、
+  `\ref` 没有对应 `\label`（PDF 里印成 `??`）、`\label` 重复定义
+  （编号看着对，指向是错的）。
+  WARN 三类：图/表数量低于一等奖 p25、`figures/` 里有图没被引用、
+  有 label 但正文从未引用它。**数量类 WARN 是经验分布不是规则**——
+  图少不违规，但要回头确认每个子问都有"表 + 图 + 方法 + 分析段 + 结果文件"；
 - every external claim has a verified source;
 - AI-generated citations have been opened and checked manually.
 
@@ -163,11 +177,31 @@ Write actual runtime-derived counts and paths. The schema is:
 
 The `null` values above are schema placeholders only. Replace every one with an observed count or verified boolean before persisting Stage 9; never copy a sample result into the final gate.
 
+## L1 Rubric（阶段级 5 维）
+
+Stage 9 有两层反馈：这张是 **L1 阶段级**打分（`feedback: ["L1", ...]`），
+L3 五视角 panel 另见 `references/feedback_layer3_panel.md` 与 `rubrics.md §Stage 9`。
+**别把两层混起来**——L1 的键在 `config/rubric.json` 里，panel 走另一套。
+
+<!-- RUBRIC:BEGIN 9 -->
+| 维度 | 满分行为 |
+|------|---------|
+| 1. 反模式覆盖 (`1_anti_pattern_coverage`) | `anti_patterns.md` 的全部索引项都过了一遍（`doctor.py` 报的 66 条），命中的每一条**要么已修，要么在论文里写明为什么不适用**；不允许"看过了"但无结论 |
+| 2. 图表定稿质量 (`2_visual_polish`) | 逐张过 `figures/README.md` 的硬规矩：轴标签带单位、无双纵轴、≥2 系列有图例、只标结论点、顺序色非彩虹；灰度校样已翻过一遍 |
+| 3. Panel 共识 (`3_panel_consensus`) | L3 五视角无 high-severity 未决项；verdict 不靠权重覆盖异议（任一 high-severity 保持 `block`） |
+| 4. 瓶颈已处理 (`4_bottleneck_addressed`) | 最低分维度与高影响 issue 已**定向修补并让受影响视角复核**，不是记录在案就算完 |
+| 5. 提交件可编可查 (`5_pdf_compile_clean`) | `check_compliance.py` 无 FAIL：PDF 能编、中文可从 PDF 提取、页数/大小/摘要单页合规、AI 声明三项齐、附录含源程序、正文与 PDF 元数据无身份信息 |
+<!-- RUBRIC:END 9 -->
+
+第 5 维由 `check_compliance.py` 判定，不接受人工"应该没问题"。
+
 ## Exit conditions
 
 - `scripts/check_compliance.py` 退出码为 0，且 `compliance_checks` 四个字段
   全部是 `true`（没有 `null` 残留）；
-- `scripts/check_numbers.py` 与 `scripts/check_selfaudit.py` 退出码均为 0；
+- `scripts/check_numbers.py`、`scripts/check_selfaudit.py` 与
+  `scripts/check_figures.py` 退出码均为 0（后者的 WARN 不影响退出码，
+  但**数量类 WARN 要逐条读完再决定**，别当噪声划过去）；
 - current official rules verified with no unresolved violation;
 - anti-pattern and consistency checks completed;
 - all high-severity panel findings resolved;

@@ -184,13 +184,15 @@ python <skill>/scripts/scan_attachments.py <附件目录>
 
 ## L1 Rubric (`rubrics.md` Stage 1)
 
+<!-- RUBRIC:BEGIN 1 -->
 | 维度 | 满分行为 |
 |------|---------|
-| 1. 候选覆盖与对比深度 | 当前全部可选题均按同一维度评估，依据可追溯 |
-| 2. 团队优势匹配 | 选题理由含"我们擅长 X,本题需要 X" |
-| 3. 风险识别 | 实质风险均有证据与应对；不重复凑数 |
-| 4. 时间可行性 | 已估各阶段所需 h,合计不超过实际截止预算 |
-| 5. 决策记录质量 | rationale 与 rejected_alternatives 能回溯到题面、数据或团队约束 |
+| 1. 候选覆盖与对比深度 (`1_three_options_depth`) | 当前全部可选题按同一组维度评估（难度 / 数据 / 契合度 / 工具 / 资料 / 主要风险），依据可追溯 |
+| 2. 团队优势匹配 (`2_team_strength_match`) | 选题理由含"我们擅长 X,本题需要 X" |
+| 3. 风险识别 (`3_risk_identification`) | 实质风险均有证据与应对；不重复凑数 |
+| 4. 时间可行性 (`4_time_feasibility`) | 已估各阶段所需 h,合计不超过实际截止预算 |
+| 5. 决策记录质量 (`5_decision_record_quality`) | rationale 与 rejected_alternatives 能回溯到题面、数据或团队约束 |
+<!-- RUBRIC:END 1 -->
 
 退出: 全维 ≥7。
 

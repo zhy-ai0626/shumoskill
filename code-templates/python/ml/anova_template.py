@@ -56,7 +56,8 @@ class ANOVAAnalyzer:
             w, p = stats.shapiro(data)
             results[name] = (w, p)
             if verbose:
-                status = '正态 ✓' if p > 0.05 else '非正态 ✗'
+                # 用 ASCII：这行会被 print，GBK 编不出 ✓ 会直接崩
+                status = '正态 [OK]' if p > 0.05 else '非正态 [X]'
                 print(f"  {name}: W={w:.4f}, p={p:.4f}  ({status})")
         return results
 
@@ -73,7 +74,7 @@ class ANOVAAnalyzer:
         data_list = list(groups.values())
         stat, p = stats.levene(*data_list, center=center)
         if verbose:
-            status = '方差齐性 ✓' if p > 0.05 else '方差不齐 ✗'
+            status = '方差齐性 [OK]' if p > 0.05 else '方差不齐 [X]'
             print(f"Levene 检验: stat={stat:.4f}, p={p:.4f}  ({status})")
         return stat, p
 

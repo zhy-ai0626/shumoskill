@@ -46,36 +46,39 @@ VALID_VERDICTS = {
 VALID_VARIANTS = {"stage_level", "per_qi"}
 COMPETITIONS = {"cumcm"}  # 与 scripts/doctor.py 保持一致；本 fork 只做 CUMCM ABC 题
 
-# Baseline DIM_WHITELIST (cumcm-flavored; 其他竞赛通过 rubric_overlay.json dim_whitelist 覆盖)
-DIM_WHITELIST = {
-    0: {"1_role_clarity", "2_tools_ready", "3_time_planning", "4_problem_scan", "5_collab_protocol"},
-    1: {"1_three_options_depth", "2_team_strength_match", "3_risk_identification",
-        "4_time_feasibility", "5_decision_record_quality"},
-    2: {"1_subproblem_decomposition", "2_key_variables_count", "3_math_skeleton_present",
-        "4_data_alignment", "5_subproblem_dependency_identified"},
-    3: {"1_candidate_diversity", "2_selection_rationale", "3_naming_variant",
-        "4_solver_feasibility", "5_literature_support"},
-    4: {"1_assumption_count", "2_assumption_support", "3_symbol_uniqueness",
-        "4_consistency_with_model", "5_terminology_standard"},
-    5: {"1_subproblem_completeness", "2_cross_reference_chain", "3_symbol_consistency",
-        "4_visual_density", "5_time_budget"},
-    "5_per_qi": {"1_problem_fit", "2_math_rigor", "3_solve_correctness",
-                 "4_visualization", "5_physical_meaning"},
-    6: {"1_multivariate_perturbation", "2_perturbation_realism", "3_output_completeness",
-        "4_robust_interval_quantitative", "5_failure_warning"},
-    7: {"1_strengths_specific", "2_weaknesses_real", "3_improvements_actionable",
-        "4_generalization_concrete", "5_self_critique_credibility"},
-    8: {"1_abstract_5_paragraph", "2_section_completeness", "3_formulas_figures_citations",
-        "4_language_quality", "5_visual_consistency"},
-    9: {"1_anti_pattern_coverage", "2_visual_polish", "3_panel_consensus",
-        "4_bottleneck_addressed", "5_pdf_compile_clean"},
-}
+# 路径解析使用 skill 根目录, 因为 competitions/ 与 config/ 都在 skill 内
+_SKILL_ROOT = Path(__file__).resolve().parent.parent
+
+# Baseline DIM_WHITELIST —— **不再硬编码，从 config/rubric.json 加载。**
+#
+# 这份白名单曾经和 references/rubrics.md、各 stage 文件里的表格三处并存，
+# 无人核对一致性。实测漂移：stage 1/3/6/7 的维度**名称两边完全不同**
+# （如「命名准确性」vs「模型命名真实性」），键相同所以任何既有检查都查不出来；
+# stage 5 的 stage-level 五维、stage 9 的五维在 rubrics.md 里干脆没有表——
+# 白名单有键、没有满分行为，Critic 只能自己编判据。
+#
+# 现在 `config/rubric.json` 是唯一数据源：md 里的表格由
+# `scripts/render_rubric.py` 生成（`--check` 已接入 doctor），本字典也从它加载。
+# **加载失败直接抛，不 fallback 到硬编码副本**——静默回落到一份过期的白名单，
+# 比直接报错坏得多：它会让"键校验通过"变得毫无意义。
+def _load_dim_whitelist_from_json() -> dict:
+    path = _SKILL_ROOT / "config" / "rubric.json"
+    data = json.loads(path.read_text(encoding="utf-8"))
+    out: dict = {}
+    for key, node in (data.get("stages") or {}).items():
+        # stage 键是 int（"5_per_qi" 保持字符串）——这是上游 load_dim_whitelist
+        # 的查表约定，**改键型会静默改掉查表结果**。
+        out[int(key) if key.isdigit() else key] = {d["key"] for d in node["dims"]}
+    if not out:
+        raise ValueError("config/rubric.json 里没有任何 stage")
+    return out
+
+
+DIM_WHITELIST = _load_dim_whitelist_from_json()
 
 WEIGHT_CLAMP_MIN = 0.7
 WEIGHT_CLAMP_MAX = 1.5
 
-# 路径解析使用 skill 根目录, 因为 competitions/ 与 config/ 都在 skill 内
-_SKILL_ROOT = Path(__file__).resolve().parent.parent
 
 
 # ============================================================================

@@ -205,12 +205,27 @@ for d in deltas:
     profit_d = (p_perturb - c) @ x_star  # 用同一 x*, 看新参数下利润
     profits.append(profit_d)
 
-plt.plot(deltas, profits, 'o-')
-plt.xlabel("p 扰动比例")
-plt.ylabel("利润 (元)")
-plt.title("Q1 子灵敏度: 单价扰动")
-plt.savefig("figures/Q1_sensitivity.png", dpi=300)
+# **出图一律走 cumcm_style，不要裸用 plt。** 裸 plt 有三个后果，都不报错：
+# ① 没设中文字体 → 图上每个汉字是一个空方框；
+# ② 轴标签可以为空或不带单位 → Stage 9 的人工检查项直接失分
+#    （2022A 讲评 9 条评阅问题里 5 条是呈现类）；
+# ③ 颜色不带线型/标记第二通道 → 灰度打印后系列分不开。
+# `cs.finish()` 会强制 xlabel/ylabel 非空；无量纲量写"(无量纲)"或"(比例)"。
+import sys; sys.path.insert(0, "<skill>/figures")
+import cumcm_style as cs
+
+cs.use()
+fig, ax = plt.subplots(figsize=cs.SIZE_1COL)
+ax.plot(deltas, profits, label="扰动后利润", **cs.series_kw(0, "line"))
+cs.annotate_value(ax, deltas[0], profits[0], "基线 %.0f" % profits[0])
+cs.finish(ax, xlabel="单价 p 的扰动比例 (无量纲)", ylabel="利润 (元)",
+          title="Q1 子灵敏度：单价扰动下利润的变化区间")
+cs.save(fig, "figures/Q1_sensitivity.png")     # 顺手出一份 _gray.png 校样
 ```
+
+> 现成模板见 `figures/starter.py`：第 4 段是灵敏度龙卷风（Stage 6 的标准交付），
+> 第 3 段是拟合+残差，第 1 段是描述统计三联。拷进项目改 `load_data()` 即可，
+> 不用从零写。范例与画法规矩见 `figures/README.md`。
 
 ### E. 物理意义讨论 (15 min)
 
@@ -278,23 +293,27 @@ plt.savefig("figures/Q1_sensitivity.png", dpi=300)
 
 ## L1 Rubric (Per-Qi)
 
+<!-- RUBRIC:BEGIN 5_per_qi -->
 | 维度 | 满分行为 |
 |------|---------|
-| 1. 模型与问题契合 | 目标/变量/约束 与题面 1:1 |
-| 2. 数学严谨性 | 符号一致, 推导无跳跃 |
-| 3. 求解正确性 | 代码运行 + sanity check 通过 |
-| 4. 结果表达 | 每个关键论点有最合适的图、表或数值证据；不重复、不凑数量 |
-| 5. 物理意义讨论 | 解释与结果证据绑定；baseline 仅在公平可比时使用 |
+| 1. 模型与问题契合 (`1_problem_fit`) | 目标函数 / 决策变量 / 约束 与题面一一对应 |
+| 2. 数学严谨性 (`2_math_rigor`) | 符号一致, 推导无跳跃 |
+| 3. 求解正确性 (`3_solve_correctness`) | 代码运行 + sanity check 通过 |
+| 4. 结果表达 (`4_visualization`) | 每个关键论点有最合适的图、表或数值证据；不重复、不凑数量 |
+| 5. 物理意义讨论 (`5_physical_meaning`) | 解释与结果证据绑定；baseline 仅在公平可比时使用 |
+<!-- RUBRIC:END 5_per_qi -->
 
 ## L1 Rubric (Stage-level)
 
+<!-- RUBRIC:BEGIN 5 -->
 | 维度 | 满分行为 |
 |------|---------|
-| 1. 子问题完整性 | 所有 Qi 都跑完 |
-| 2. 依赖链 | 有依据的上下游接口均显式传递；无合理依赖时理由已记录 |
-| 3. 符号一致 | 全 Qi 用同一套 stage 4 符号 |
-| 4. 证据表达 | 图、表与数值产物足以支持关键论点且无装饰性重复 |
-| 5. 时间预算 | 在已确认的 stage 5 预算内完成；偏差已留痕并获用户确认 |
+| 1. 子问题完整性 (`1_subproblem_completeness`) | 所有 Qi 都跑完 |
+| 2. 依赖链 (`2_cross_reference_chain`) | 有依据的上下游接口均显式传递；无合理依赖时理由已记录 |
+| 3. 符号一致 (`3_symbol_consistency`) | 全 Qi 用同一套 stage 4 符号 |
+| 4. 证据表达 (`4_visual_density`) | 图、表与数值产物足以支持关键论点且无装饰性重复 |
+| 5. 时间预算 (`5_time_budget`) | 在已确认的 stage 5 预算内完成；偏差已留痕并获用户确认 |
+<!-- RUBRIC:END 5 -->
 
 ## 常见坑
 

@@ -4,7 +4,12 @@ name: writing
 duration_h: 12-30
 inputs: ["decision_log.stages.0-7", "decision_log.competition", "decision_log.task_type"]
 outputs:
-  - "stage.8.{section_word_counts, figures_per_subproblem, tables_per_subproblem, abstract_drafts, ai_use_log, compliance}"
+  # AI 披露不写 `stage.8.*`。它的唯一权威位置是 `compliance.ai_usage`
+  # （顶层，跨阶段），`render_ai_usage.py` 只读那里。原来这行声明的
+  # `stage.8.ai_use_log` 全仓**只出现在这一处**：模板没槽、没人写、没人读——
+  # 照它写会把合规材料放进一个谁都不读的字段，而且不报错。
+  - "stage.8.{section_word_counts, figures_per_subproblem, tables_per_subproblem, abstract_drafts, compliance}"
+  - "compliance.ai_usage"
   - "paper_workspace/*.md"
   - "paper.tex"
 loads_reference:
@@ -147,6 +152,18 @@ grep -c "undefined" $L                           # 未解析的引用/标签，�
 
 Use the five Stage 8 dimensions from `competitions/<competition>/rubric_overlay.json` when that competition overrides the baseline.
 
+基线五维（由 `config/rubric.json` 生成，不要手改这张表）：
+
+<!-- RUBRIC:BEGIN 8 -->
+| 维度 | 满分行为 |
+|------|---------|
+| 1. 摘要信息闭环 (`1_abstract_5_paragraph`) | 覆盖问题、逐问方法、可追溯结果、验证与边界；不机械凑段或字数 |
+| 2. 章节完整性 (`2_section_completeness`) | 题目要求与证据链所需章节齐全,无空节 |
+| 3. 公式 / 图表 / 引用 (`3_formulas_figures_citations`) | 编号规范,首次引用先解释,引用格式符合所选竞赛当年要求 |
+| 4. 语言质量 (`4_language_quality`) | 句长适度,无明显语病 (phrase_bank 关键词命中率) |
+| 5. 视觉一致性 (`5_visual_consistency`) | 字号/配色/字体 全文统一,无 Word/Excel 默认输出 |
+<!-- RUBRIC:END 8 -->
+
 ## Exit conditions
 
 - all required sections and problem-specific deliverables exist;
@@ -186,10 +203,28 @@ Then enter `stage_09_review.md`.
 
 ### 9.3 图的硬要求
 
-- 坐标轴含义与单位齐全；对比类结果画在同一张图上
+**别手搓，用 `figures/` 里的东西**——下面这些规矩已经编码进去了：
+
+| 要什么 | 用什么 |
+|---|---|
+| 六段最常用的图（分布/相关矩阵/拟合残差/灵敏度/面板/流程） | `figures/starter.py`，改 `load_data()` |
+| 按题型的 11 张范例 + 全部画法规矩 | `figures/gallery.py` + `figures/README.md` |
+| 相关矩阵热力图 | `cs.corr_heatmap()`（色标钉死 [-1,1]，随手 `imshow` 会把强正相关画成中性） |
+| **技术路线图 / 每问流程图** | `figures/flow_pptx.py` 出**可编辑 pptx**，改完另存为 PDF |
+
+- 坐标轴含义与单位齐全（`cs.finish()` 强制 xlabel/ylabel 非空；无量纲写"(无量纲)"）；
+  对比类结果画在同一张图上；**绝不用双纵轴**，量纲不同就画两张
 - 优先等高线/热力图，而非一屏数字
-- **中文字体**：matplotlib 用 `SimHei`/`Microsoft YaHei`；注意 SimHei **缺 `³` 和 `−` 字形**，
-  轴标签写"立方米"而不是 `m³`，并设 `axes.unicode_minus=False`
+- **中文字体**：matplotlib 用 `SimHei`/`Microsoft YaHei`，并设 `axes.unicode_minus=False`。
+  注意 SimHei **缺 `³` 和 `−`(U+2212) 字形**：轴标签写"立方米"而不是 `m³`，
+  负号一律用 ASCII 连字符 `-`。**`axes.unicode_minus=False` 只管刻度标签自动生成的
+  负号，管不了你自己写进 `label=` 里的字符**——那种情况图上就是个空方框，
+  只刷一条 findfont 警告、图照出。`tests/test_glyph_safety.py` 会静态查这一类。
+  GBK/SimHei 有 `→ — ± ×`（可用），没有 `✓ ✗ ⚠ −`（不可用）
+- **流程图 52% 的一等奖论文有**，平均 2.3 张（总体一张 + 每问一张），
+  `paper_skeleton.md` 的 `## 2.1 总体技术路线` 就是它的位置。用 pptx 而不是代码画，
+  因为它在 72 小时里要跟着模型改三四遍——pptx 的连接线两端锚在形状上，
+  拖框箭头自动跟随，队友用 WPS 就能改
 - 结论如果与预期相反，**照实画并标注**，不要因为图"不好看"就换口径
 
 ### 9.4 数值一致性（组委会会查）

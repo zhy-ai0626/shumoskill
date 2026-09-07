@@ -154,7 +154,8 @@ def ahp_entropy_topsis(X, judgment_matrix, indicator_types=None, alpha=0.5):
     """
     ahp = ahp_weights(judgment_matrix)
     if not ahp["consistent"]:
-        print(f"⚠ AHP CR = {ahp['CR']:.3f} > 0.1, 一致性较差")
+        # ASCII 前缀：GBK 下 print U+26A0(⚠) 会抛 UnicodeEncodeError
+        print(f"[!] AHP CR = {ahp['CR']:.3f} > 0.1, 一致性较差")
     ent = entropy_weights(X, indicator_types)
     # 组合权重
     combined_weights = alpha * ahp["weights"] + (1 - alpha) * ent["weights"]

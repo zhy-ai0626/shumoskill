@@ -221,6 +221,23 @@ def _smoke_gates() -> tuple[bool, str]:
             ["--paper", "paper.tex", "--results", "results/"], 1,
             "找不到")
 
+        # 数据口径门。植入的问题：有附件数据（data_schema 非空）但
+        # preprocessing_decisions 是空的 —— 期望它报 missing_decisions。
+        (work / "dlog.json").write_text(json.dumps({
+            "stages": {"2": {"data_schema": {"附件1": {"rows": 100}},
+                             "preprocessing_decisions": {}}}},
+            ensure_ascii=False), encoding="utf-8")
+        run("check_data_decisions.py", ["--decision-log", "dlog.json"], 1,
+            "missing_decisions")
+
+        # 图表门。植入的问题：引用了一个不存在的图文件 + 一个悬挂 \ref。
+        (work / "figpaper.tex").write_text(
+            "如图~\\ref{fig:a} 与式~\\ref{eq:nowhere}。\n"
+            "\\includegraphics{no_such_figure.png}\\label{fig:a}\n",
+            encoding="utf-8")
+        run("check_figures.py", ["--paper", "figpaper.tex"], 1,
+            "missing_image_file")
+
         # 合规门要一份真 PDF。用 reportlab 造一份空白的——它必然违反多条规则，
         # 正好用来验证"能读 PDF 且判定逻辑会报错"。reportlab 已是 compliance-stack 的依赖。
         pdf = work / "paper.pdf"
@@ -239,8 +256,11 @@ def _smoke_gates() -> tuple[bool, str]:
 
     if failures:
         return False, "；".join(failures)
-    return True, "%s 三门均按预期报出植入的问题" % "/".join(
-        n.replace("check_", "").replace(".py", "") for n in results)
+    # 数量别写死。原来这里硬编码"三门"，加到五门之后消息就开始说谎了——
+    # 而说谎的消息比没有消息更坏：它让人以为覆盖面没变。
+    return True, "%d 个门（%s）均按预期报出植入的问题" % (
+        len(results),
+        "/".join(n.replace("check_", "").replace(".py", "") for n in results))
 
 
 def _render_smoke(competition: str) -> tuple[bool, str]:
@@ -317,6 +337,7 @@ def run_checks(
         "SKILL.md",
         "AGENTS.md",
         "config/dim_weights.json",
+        "config/rubric.json",
         "templates/shared/decision_log.json",
         "scripts/score_artifact.py",
         "scripts/extract_diff.py",
@@ -325,8 +346,13 @@ def run_checks(
         "scripts/check_numbers.py",
         "scripts/check_compliance.py",
         "scripts/check_selfaudit.py",
+        "scripts/check_data_decisions.py",
+        "scripts/check_figures.py",
+        "scripts/render_rubric.py",
         "scripts/scan_attachments.py",
         "figures/cumcm_style.py",
+        "figures/starter.py",
+        "figures/flow_pptx.py",
         "templates/shared/ai_usage_ledger.json",
         "templates/shared/self_audit.json",
         "templates/latex/cumcm/main.tex",
@@ -354,6 +380,7 @@ def run_checks(
     for comp in COMPETITIONS:
         json_paths.extend((
             SKILL_ROOT / "competitions" / comp / "rubric_overlay.json",
+            SKILL_ROOT / "config" / "rubric.json",
             SKILL_ROOT / "competitions" / comp / "topic_specs.json",
             SKILL_ROOT / "competitions" / comp / "empirical.json",
         ))
@@ -612,7 +639,91 @@ def run_checks(
             "Install templates/shared/requirements.txt." if missing_modules else None,
         ))
 
+    # rubric 单一数据源同步。**md 里的表格是生成物，不是手写的。**
+    # 这份 rubric 曾散在四处（rubrics.md / 各 stage 副本 / DIM_WHITELIST /
+    # dim_weights.json），实测漂移到 stage 1/3/6/7 的维度名两边完全不同，
+    # 而键相同所以每一项既有检查都查不出来。现在唯一数据源是
+    # config/rubric.json，这一项就是防它再漂回去。
+    rubric_ok, rubric_detail = _check_rubric_sync()
+    checks.append(_check(
+        "rubric-sync",
+        rubric_ok,
+        rubric_detail,
+        "md 里的 rubric 表格由 config/rubric.json 生成。**不要手改表格**——"
+        "改 JSON 后跑 `python scripts/render_rubric.py --write`；"
+        "`--diff` 可以先看差异。"
+        if not rubric_ok else None,
+    ))
+
+    # 中文字体。**这一项必须进 Stage 0 预检。**
+    # 原来 doctor 只查 matplotlib 能不能 import，查不出"装了 matplotlib 但没有
+    # 中文字体"这种最常见的情形——那种情况下图里每个汉字都是一个空方框，
+    # matplotlib 只刷 findfont 警告、图照出，而 `cumcm_style.use()` 会直接抛异常。
+    # 一等奖论文图数中位 20 张，绘图环境坏掉等于整条呈现链断掉，
+    # 却可能到比赛第三天出第一张图时才发现。
+    font_ok, font_detail = _check_cn_font()
+    checks.append(_check(
+        "cn-font",
+        font_ok,
+        font_detail,
+        "Windows 自带 SimHei/微软雅黑；Linux 装 fonts-noto-cjk 或思源黑体，"
+        "装完跑 `python -c \"import matplotlib.font_manager as f; "
+        "f._load_fontmanager(try_read_cache=False)\"` 刷新缓存。"
+        if not font_ok else None,
+    ))
+
     return checks
+
+
+def _check_rubric_sync() -> tuple[bool, str]:
+    """md 里的 rubric 表格是否与 config/rubric.json 一致。
+
+    在进程内调 render_rubric.process()，不起子进程——这一项只读文件，
+    没有子进程那套编码/退出码的坑，直接调更快也更容易报出真实原因。
+    """
+    try:
+        sys.path.insert(0, str(SKILL_ROOT / "scripts"))
+        import importlib
+
+        rr = importlib.import_module("render_rubric")
+        importlib.reload(rr)
+        drift, msgs = rr.process(write=False, show_diff=False)
+    except Exception as exc:                           # noqa: BLE001
+        return False, "rubric 同步检查跑不起来: %s: %s" % (type(exc).__name__, exc)
+    if drift:
+        return False, "%d 处 md 表格与 config/rubric.json 不一致：%s" % (
+            drift, "；".join(m for m in msgs if "不一致" in m or "marker" in m)[:200])
+    return True, "%d 处 rubric 表格与 config/rubric.json 一致" % len(rr.TARGETS)
+
+
+def _check_cn_font() -> tuple[bool, str]:
+    """本机有没有可用的中文字体，并**真画一张图**确认不抛异常。
+
+    只查"字体名在不在 fontManager 里"不够：字体文件损坏、缓存过期都会让
+    列表里有名字而实际画不出来。所以顺手渲染一次，成本几十毫秒。
+    """
+    if importlib.util.find_spec("matplotlib") is None:
+        return False, "matplotlib 没装，无法检查中文字体"
+    try:
+        import matplotlib
+        matplotlib.use("Agg")
+        sys.path.insert(0, str(SKILL_ROOT / "figures"))
+        import cumcm_style as cs
+
+        name = cs.available_cn_font()
+        if name is None:
+            return False, "找不到任何中文字体，图里的汉字会变成方框"
+        cs.use(name)
+        import matplotlib.pyplot as plt
+        fig, ax = plt.subplots(figsize=(1.2, 1.0))
+        ax.plot([0, 1], [0, 1])
+        cs.finish(ax, xlabel="距离 (m)", ylabel="功率 (MW)", legend=False)
+        import io
+        fig.savefig(io.BytesIO(), format="png")
+        plt.close(fig)
+        return True, f"中文字体可用并已试渲染: {name}"
+    except Exception as exc:                           # noqa: BLE001
+        return False, f"中文字体检查失败: {type(exc).__name__}: {exc}"
 
 
 def _print_human(checks: list[Check]) -> None:

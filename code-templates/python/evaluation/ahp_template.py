@@ -44,7 +44,10 @@ def print_ahp_result(name, weights, lambda_max, CR, is_consistent, indicators=No
     print(f"\n===== {name} =====")
     print(f"λ_max = {lambda_max:.4f}")
     print(f"CI = {(lambda_max - len(weights)) / (len(weights) - 1):.4f}")
-    print(f"CR = {CR:.4f} {'✓ 通过' if is_consistent else '✗ 不通过！'}")
+    # 状态符号用 ASCII。中文 Windows 下 stdout 被管道/重定向接走时编码是
+    # GBK，print 一个 U+2713(✓) 直接抛 UnicodeEncodeError，脚本当场崩——
+    # 实测 `python ahp_template.py > log.txt` 就会。信息量一样，别用花符号。
+    print(f"CR = {CR:.4f} {'[OK] 通过' if is_consistent else '[X] 不通过！'}")
     print("权重：")
     labels = indicators if indicators else [f"指标{i+1}" for i in range(len(weights))]
     for label, w in zip(labels, weights):

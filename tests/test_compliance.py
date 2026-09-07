@@ -280,12 +280,8 @@ class CliTest(unittest.TestCase):
         self.assertEqual(rc, 2)
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 class CheckNumbersThousandsTest(unittest.TestCase):
-    """LaTeX 千分位 `\,` 必须先合并再取数。
+    r"""LaTeX 千分位 `\,` 必须先合并再取数。
 
     2023A 演练实测：论文里写 119\,120（= 119120 m²），
     被切成 119 与 120 两个数，双双报成"结果文件里找不到"。
@@ -305,7 +301,7 @@ class CheckNumbersThousandsTest(unittest.TestCase):
         self.assertIn(0.5038, vals)
 
     def test_not_a_thousands_separator(self):
-        """`\,` 后面不是恰好三位数字时不合并，例如 5\,MW。"""
+        r"""`\,` 后面不是恰好三位数字时不合并，例如 5\,MW。"""
         vals = [v for v, _ in self.cn.extract_numbers(r"功率 60.01\,MW")]
         self.assertIn(60.01, vals)
 
@@ -341,3 +337,11 @@ class GatesSmokeTest(unittest.TestCase):
     def test_check_is_registered(self):
         checks = self.doctor.run_checks(competition="cumcm", check_tools=False)
         self.assertIn("gates-smoke", {c.name for c in checks})
+
+
+# **这个块必须留在文件最末尾。** 它原来卡在 CliTest 之后、
+# CheckNumbersThousandsTest 之前——`python tests/test_compliance.py` 执行到那里时
+# 后面两个 TestCase 还没定义，unittest.main() 收集不到它们：**少跑两个类，不报错**。
+# pytest 走的是 collect 而非 __main__，所以问题只在直接运行时出现，更难发现。
+if __name__ == "__main__":
+    unittest.main()

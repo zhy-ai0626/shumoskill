@@ -248,6 +248,246 @@ def finish(ax, *, xlabel: str = "", ylabel: str = "", title: str = "",
             leg.remove()
 
 
+# ================================================================ 流程图
+# 为什么这几个 helper 值得进样式模块：**52% 的一等奖论文有流程图/框架图**
+# （44 篇官方展示实测，平均 2.3 张，通常"总体一张 + 每问一张"），
+# `paper_skeleton.md` 有 `## 2.1 总体技术路线` 这个章节，`phrase_bank.md`
+# 有"算法流程图见图 N"这句式——需求、章节、句式都在，**却没有画法**。
+# 手搓 Rectangle + annotate 每次都要重新调框宽、箭头缩进和文字居中，
+# 而且最容易犯的两个错（箭头扎进框里、层级靠颜色而非位置区分）没人拦。
+
+# 流程图的框按**角色**上色，不按系列上色——流程图里没有"系列"这个东西。
+# 一律用浅底 + 墨字：框里要塞中文，深底会让字不可读，灰度稿更糟。
+FLOW_TINTS = {
+    "input":  "#f3f2ee",     # 数据/题面输入
+    "step":   "#e3eefb",     # 处理步骤（默认）
+    "model":  "#e6f3ec",     # 建模/求解
+    "output": "#fdf3d8",     # 结论/交付
+    "check":  "#faeceb",     # 校验/回检（唯一带暖色的一档，视觉上跳出来）
+}
+
+
+class FlowBox:
+    """流程图里的一个框。**用四边锚点连线，不要用中心点。**
+
+    从中心画到中心，箭头会扎进框里压住文字——这是手搓流程图最常见的翻车点。
+    `b.s`（下边中点）→ `b2.n`（上边中点）这样连，箭头永远停在框外。
+    """
+
+    __slots__ = ("x", "y", "w", "h")
+
+    def __init__(self, x: float, y: float, w: float, h: float):
+        self.x, self.y, self.w, self.h = x, y, w, h
+
+    # 四边的**分数锚点**。多条边汇进同一个框时，全都指向 `n`（上边中点）
+    # 会让三个箭头尖叠成一团黑；`top(0.15) / top(0.5) / top(0.85)` 摊开就干净了。
+    def top(self, f: float = 0.5) -> tuple[float, float]:
+        return self.x + self.w * f, self.y + self.h
+
+    def bottom(self, f: float = 0.5) -> tuple[float, float]:
+        return self.x + self.w * f, self.y
+
+    def left(self, f: float = 0.5) -> tuple[float, float]:
+        return self.x, self.y + self.h * f
+
+    def right(self, f: float = 0.5) -> tuple[float, float]:
+        return self.x + self.w, self.y + self.h * f
+
+    @property
+    def c(self) -> tuple[float, float]:
+        return self.x + self.w / 2, self.y + self.h / 2
+
+    @property
+    def n(self) -> tuple[float, float]:
+        return self.top()
+
+    @property
+    def s(self) -> tuple[float, float]:
+        return self.bottom()
+
+    @property
+    def e(self) -> tuple[float, float]:
+        return self.right()
+
+    @property
+    def w_(self) -> tuple[float, float]:
+        """左边中点。名字带下划线是因为 `w` 已经被框宽占了。"""
+        return self.left()
+
+
+def flow_canvas(figsize=(6.6, 5.2), xlim=(0.0, 100.0), ylim=(0.0, 100.0)):
+    """流程图专用画布：关掉坐标轴与网格，坐标系默认 0–100 便于摆框。
+
+    必须显式关网格——`use()` 把 `axes.grid` 设成了 True（数据图要网格），
+    流程图上留着就是一层横条纹。
+    """
+    fig, ax = plt.subplots(figsize=figsize)
+    ax.set_xlim(*xlim)
+    ax.set_ylim(*ylim)
+    ax.set_axis_off()
+    ax.grid(False)
+    return fig, ax
+
+
+def flow_box(ax, x: float, y: float, w: float, h: float, text: str, *,
+             tint: str = "step", fontsize: float | None = None,
+             weight: str = "normal", **kw) -> FlowBox:
+    """画一个流程框，返回 `FlowBox`（带 n/s/e/w_/c 五个锚点）。
+
+    `x, y` 是**左下角**，与 matplotlib 的 Rectangle 一致。
+    `tint` 取 `FLOW_TINTS` 的键；传了未知键直接报错，免得静默退化成白框。
+    """
+    if tint not in FLOW_TINTS:
+        raise ValueError("tint 只能是 %s，收到 %r"
+                         % ("/".join(FLOW_TINTS), tint))
+    ax.add_patch(plt.Rectangle((x, y), w, h, facecolor=FLOW_TINTS[tint],
+                               edgecolor=AXIS, linewidth=0.8,
+                               zorder=2, **kw))
+    ax.text(x + w / 2, y + h / 2, text, ha="center", va="center",
+            fontsize=fontsize or (BASE_FONT - 0.5), color=INK,
+            weight=weight, linespacing=1.45, zorder=4)
+    return FlowBox(x, y, w, h)
+
+
+def flow_arrow(ax, src, dst, *, text: str = "", rad: float = 0.0,
+               angle: tuple[float, float] | None = None,
+               dashed: bool = False, pad: float = 1.2,
+               text_dx: float = 0.0, text_dy: float = 0.0) -> None:
+    """从 `src` 锚点连到 `dst` 锚点。
+
+    `angle=(θ_src, θ_dst)` 画**直角折线**：θ_src 是离开 src 时的方向、
+    θ_dst 是抵达 dst 时的方向（度，0=向右，90=向上，180=向左，-90=向下）。
+    最常用的两个：
+
+        angle=(0, 90)     先横着走，再竖着扎进目标的上/下边 —— 主流程换列
+        angle=(180, 90)   先向左，再向上 —— 反馈环绕回上游
+
+    两个方向都给成竖直（如 `(-90, 90)`）时两条线平行、没有交点，
+    matplotlib 会画出一条奇怪的折线——这是最容易踩的一脚，所以这里直接拦住。
+
+    `rad` 是弧度（不给 `angle` 时用，弧线绕开中间的框）；`dashed=True` 画虚线
+    （"可选 / 反馈 / 不一定走"这类边）。`pad` 让箭头两端各缩进一点，
+    否则箭头尖会压在框的边线上。
+
+    `text_dx/text_dy` 把边上的文字挪开箭头。**短箭头一定要挪**——
+    文字的白底 bbox 会把只有几个单位长的箭头整根盖掉，图上看起来就是"没连线"。
+    """
+    if angle is not None:
+        a, b = angle
+        if abs((a - b) % 180.0) < 1e-6:
+            raise ValueError(
+                "angle=(%g, %g) 两端方向平行，折线没有交点，画出来是条乱线。"
+                "横→竖用 (0, 90)，竖→横用 (90, 0)。" % (a, b))
+        style = "angle,angleA=%g,angleB=%g,rad=2" % (a, b)
+    else:
+        style = "arc3,rad=%.3f" % rad
+    ax.annotate("", xy=dst, xytext=src, zorder=3,
+                arrowprops=dict(arrowstyle="-|>", color=INK_2,
+                                linewidth=0.9, shrinkA=pad, shrinkB=pad,
+                                linestyle="--" if dashed else "-",
+                                connectionstyle=style,
+                                mutation_scale=9))
+    if text:
+        mx = (src[0] + dst[0]) / 2 + text_dx
+        my = (src[1] + dst[1]) / 2 + text_dy
+        ax.text(mx, my, text, ha="center", va="center",
+                fontsize=BASE_FONT - 2, color=INK_2, zorder=5,
+                bbox=dict(boxstyle="round,pad=0.16", facecolor=SURFACE,
+                          edgecolor="none"))
+
+
+# ================================================================ 相关矩阵
+def _needs_light_text(rgba) -> bool:
+    """这个格子的底色够深，深色字就读不出来了。"""
+    r, g, b = rgba[:3]
+    return (0.2126 * r + 0.7152 * g + 0.0722 * b) < 0.45
+
+
+def corr_heatmap(ax, matrix, labels, *, annot_min: float = 0.5,
+                 mask_upper: bool = True, cbar: bool = True,
+                 cbar_label: str = r"相关系数 $\rho$ (无量纲)"):
+    r"""相关系数矩阵热力图。**发散色、0 居中、只标够大的格子。**
+
+    为什么单独做成 helper 而不是让人随手 `imshow`：相关矩阵有正有负、
+    有中性零点，**必须用发散色且把 0 钉在中点**（`vmin=-1, vmax=1`）。
+    随手 `imshow(C)` 会按数据范围自动拉伸——若这份数据的相关系数都在
+    0.3~0.9 之间，色标中点就落到 0.6 上，**图上"看起来中性"的格子其实是强正相关**，
+    而且不报错。用顺序色（`SEQ`）则把 -0.8 和 +0.1 画成深浅之差，符号信息直接消失。
+
+    `annot_min`: 只有 |ρ| ≥ 这个值的格子才写数字。README 硬规矩第 4 条——
+    不要每个格子都标，20×20 全标就是一片糊。设成 0 则全标。
+    `mask_upper`: 遮掉上三角。矩阵对称，全画等于把同一信息说两遍，
+    还挤掉了字号。对角线一并遮掉（自相关恒为 1，没有信息）。
+
+    **灰度下这张图必然丢符号。** 实测灰度校样：ρ=−0.49 与 ρ=+0.78 都是中深灰，
+    色标本身塌成 V 形（两端深、中间浅）。这不是配色没调好，是任何发散色映射到
+    单通道明度时的必然结果——正负两侧本来就要在中点两边对称地变深。
+    所以这里的数字标注**不只是可读性装饰，它就是这张图的灰度第二通道**：
+    `annot_min` 别关掉。矩阵大到标不下（>15 阶）时，正确的做法是先合并/筛指标，
+    而不是画一张彩色稿能看、黑白稿丢符号的图。
+    """
+    M = np.asarray(matrix, dtype=float)
+    n = M.shape[0]
+    if M.ndim != 2 or M.shape[1] != n:
+        raise ValueError("matrix 必须是方阵，收到 %s" % (M.shape,))
+    if len(labels) != n:
+        raise ValueError("labels 有 %d 个，矩阵是 %d 阶" % (len(labels), n))
+    finite = M[np.isfinite(M)]
+    if finite.size and (finite.min() < -1.0001 or finite.max() > 1.0001):
+        raise ValueError(
+            "取值超出 [-1, 1]，这不像相关系数矩阵（实际范围 %.3f~%.3f）。"
+            "若要画协方差或其它无界量，请自己指定 vmin/vmax 并说明中点在哪。"
+            % (finite.min(), finite.max()))
+
+    shown = M.astype(float).copy()
+    if mask_upper:
+        shown[np.triu_indices(n, k=0)] = np.nan
+
+    # 被遮的格子留白，不是画成 0。用 with_extremes 而不是 copy()+set_bad——
+    # 后者在新版 matplotlib 上是 PendingDeprecationWarning。
+    try:
+        cmap = DIVERGING.with_extremes(bad=SURFACE)
+    except AttributeError:                     # matplotlib < 3.4
+        cmap = DIVERGING.copy()
+        cmap.set_bad(SURFACE)
+    im = ax.imshow(shown, cmap=cmap, vmin=-1.0, vmax=1.0,
+                   interpolation="nearest")
+
+    ax.grid(False)                             # rcParams 的 y 网格会横穿整张热图
+    ax.set_xticks(range(n), labels, rotation=38, ha="right")
+    ax.set_yticks(range(n), labels)
+    ax.tick_params(length=0)
+    for side in ("top", "right", "bottom", "left"):
+        ax.spines[side].set_visible(False)
+    # 发丝级白缝，让相邻格子分得开（灰度稿上尤其需要）
+    ax.set_xticks(np.arange(n + 1) - 0.5, minor=True)
+    ax.set_yticks(np.arange(n + 1) - 0.5, minor=True)
+    ax.grid(which="minor", color=SURFACE, linewidth=1.1)
+    ax.tick_params(which="minor", length=0)
+
+    if annot_min is not None:
+        for i in range(n):
+            for j in range(n):
+                v = shown[i, j]
+                if not np.isfinite(v) or abs(v) < annot_min:
+                    continue
+                # **这是"文字用墨色"那条规矩的唯一例外**：深底上墨字读不出来。
+                # 例外的判据是底色亮度，不是系列身份，所以不违反那条的本意。
+                light = _needs_light_text(cmap((v + 1.0) / 2.0))
+                ax.text(j, i, ("%.2f" % v).replace("0.", ".", 1)
+                        if abs(v) < 1 else "%.0f" % v,
+                        ha="center", va="center", fontsize=BASE_FONT - 2,
+                        color=SURFACE if light else INK, zorder=3)
+
+    if cbar:
+        cb = ax.figure.colorbar(im, ax=ax, fraction=0.040, pad=0.03,
+                                ticks=[-1, -0.5, 0, 0.5, 1])
+        cb.set_label(cbar_label, fontsize=BASE_FONT - 1, color=INK)
+        cb.ax.tick_params(labelsize=BASE_FONT - 2, length=0)
+        cb.outline.set_visible(False)
+    return im
+
+
 def grayscale_proof(png_path: str) -> str | None:
     """把已保存的图转成灰度校样，文件名加 `_gray` 后缀。
 

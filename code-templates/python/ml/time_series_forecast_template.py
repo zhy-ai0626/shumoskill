@@ -258,7 +258,9 @@ class TimeSeriesForecaster:
         if verbose:
             print(f"Ljung-Box 检验 (lag={lags_use}):")
             print(f"  p-value = {p_value:.4f}")
-            print(f"  结论: {'残差为白噪声 ✓' if is_white else '残差存在自相关 ✗'}\n")
+            # ASCII 状态符：中文 Windows 下 stdout 被管道接走时编码是 GBK，
+            # print 一个 U+2713(✓) 直接抛 UnicodeEncodeError，脚本当场崩。
+            print(f"  结论: {'残差为白噪声 [OK]' if is_white else '残差存在自相关 [X]'}\n")
 
         return {'ljung_box_stat': lb_result['lb_stat'].values[0],
                 'ljung_box_pvalue': p_value, 'is_white_noise': is_white}

@@ -110,7 +110,10 @@ def sobol_indices(simulator, param_names, baseline_params, n_samples=1024):
         from SALib.sample import saltelli
         from SALib.analyze import sobol
     except ImportError:
-        print("⚠ SALib 未安装, 跳过 Sobol")
+        # ASCII 前缀：中文 Windows 下 stdout 被管道接走时编码是 GBK，
+        # U+26A0(⚠) 编不出，print 直接抛 UnicodeEncodeError。
+        # `→ — ±` 在 GBK 里有，可以用；`✓ ✗ ⚠ −` 没有，一律别用。
+        print("[!] SALib 未安装, 跳过 Sobol")
         return None
 
     bounds = [[v * 0.8, v * 1.2] for v in baseline_params.values()]

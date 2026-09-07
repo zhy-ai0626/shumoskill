@@ -109,6 +109,7 @@
       "key_constraints": [],
       "objective_per_subproblem": {},
       "data_schema": {},
+      "preprocessing_decisions": {},
       "subproblem_dependency": {}
     },
     "3": {

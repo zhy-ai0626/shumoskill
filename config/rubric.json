@@ -1,0 +1,356 @@
+{
+  "_schema_version": "1.0",
+  "_doc": "L1 rubric 的**唯一数据源**。references/rubrics.md 与各 stage 文件里的表格由 scripts/render_rubric.py 从这里生成，score_artifact.py 的 DIM_WHITELIST 也从这里加载。**不要手改那些 md 表格**——改这里，然后跑 `python scripts/render_rubric.py --write`。",
+  "_why": "同一份 rubric 曾散在四处（rubrics.md / 各 stage 文件副本 / score_artifact.DIM_WHITELIST / dim_weights.json），无人核对一致性。实测漂移：stage 1/3/6/7 的维度**名称两边完全不同**（如「命名准确性」vs「模型命名真实性」），键相同所以所有既有检查都查不出来；stage 5 的 stage-level 五维和 stage 9 的五维在 rubrics.md 里干脆没有表。",
+  "_source_note": "stage 文件的措辞为基底（agent 运行时真正读的是它，且多为较新修订），但**逐条与 rubrics.md 的旧版对比后合并**——有 14 处 rubrics.md 写得更完整或带不同信息（如 stage 4「假设支撑」在 stage 文件里只剩断句「每条必须有」，rubrics.md 才有完整判据），机械二选一会丢内容。stage 0/8/9 的 stage 文件原本没有 rubric 副本，故取 rubrics.md。",
+  "dims_per_stage": 5,
+  "stages": {
+    "0": {
+      "label": "团队启动",
+      "source_of_truth": "references/rubrics.md",
+      "dims": [
+        {
+          "key": "1_role_clarity",
+          "name": "角色分工明确性",
+          "full_marks": "按实际人数覆盖建模/编程/写作责任，并设置互备",
+          "fail_marks": "职责和交接人不明确"
+        },
+        {
+          "key": "2_tools_ready",
+          "name": "工具就绪度",
+          "full_marks": "题目需要的计算、写作、版本与沟通工具已验证",
+          "fail_marks": "关键工具尚未试运行"
+        },
+        {
+          "key": "3_time_planning",
+          "name": "时间盒规划",
+          "full_marks": "按实际截止时间设置里程碑、关键路径和缓冲",
+          "fail_marks": "无计划"
+        },
+        {
+          "key": "4_problem_scan",
+          "name": "题目预扫信号",
+          "full_marks": "已识别问题域 (优化/预测/评价等)",
+          "fail_marks": "未读题"
+        },
+        {
+          "key": "5_collab_protocol",
+          "name": "协作约定",
+          "full_marks": "命名规范、版本控制、daily standup 时间",
+          "fail_marks": "无规范"
+        }
+      ]
+    },
+    "1": {
+      "label": "选题",
+      "source_of_truth": "references/stage_01_problem_selection.md",
+      "dims": [
+        {
+          "key": "1_three_options_depth",
+          "name": "候选覆盖与对比深度",
+          "full_marks": "当前全部可选题按同一组维度评估（难度 / 数据 / 契合度 / 工具 / 资料 / 主要风险），依据可追溯"
+        },
+        {
+          "key": "2_team_strength_match",
+          "name": "团队优势匹配",
+          "full_marks": "选题理由含\"我们擅长 X,本题需要 X\""
+        },
+        {
+          "key": "3_risk_identification",
+          "name": "风险识别",
+          "full_marks": "实质风险均有证据与应对；不重复凑数"
+        },
+        {
+          "key": "4_time_feasibility",
+          "name": "时间可行性",
+          "full_marks": "已估各阶段所需 h,合计不超过实际截止预算"
+        },
+        {
+          "key": "5_decision_record_quality",
+          "name": "决策记录质量",
+          "full_marks": "rationale 与 rejected_alternatives 能回溯到题面、数据或团队约束"
+        }
+      ]
+    },
+    "2": {
+      "label": "问题深度解析",
+      "source_of_truth": "references/stage_02_analysis.md",
+      "dims": [
+        {
+          "key": "1_subproblem_decomposition",
+          "name": "子问题分解清晰度",
+          "full_marks": "每个 Qi 卡片完整：输入 / 输出 / 约束 / 目标均明确"
+        },
+        {
+          "key": "2_key_variables_count",
+          "name": "关键变量识别",
+          "full_marks": "覆盖目标、约束与数据接口，标注类型，无占位变量"
+        },
+        {
+          "key": "3_math_skeleton_present",
+          "name": "数学化程度",
+          "full_marks": "每个 Qi 有符号化目标雏形；数学对象、输入输出、约束或评价关系与题意对应"
+        },
+        {
+          "key": "4_data_alignment",
+          "name": "数据契合度",
+          "full_marks": "题目附件数据已扫描（`scan_attachments.py` 已跑），与变量映射清楚；**且预处理决策逐问记录在 `preprocessing_decisions`，每个「做」的动作都写了非「统计习惯」的依据**（判据见 `题型与算法对照.md` §四第一步 / `anti_patterns.md` Z3+Z18；`check_data_decisions.py` 退出码须为 0）"
+        },
+        {
+          "key": "5_subproblem_dependency_identified",
+          "name": "子问题关联性",
+          "full_marks": "每个 Qi 的依赖或独立理由均已识别"
+        }
+      ]
+    },
+    "3": {
+      "label": "模型选型",
+      "source_of_truth": "references/stage_03_model_selection.md",
+      "dims": [
+        {
+          "key": "1_candidate_diversity",
+          "name": "候选质量与反事实覆盖",
+          "full_marks": "所有合理替代均被评估；无合理替代时检索范围与原因可审计"
+        },
+        {
+          "key": "2_selection_rationale",
+          "name": "选型理由",
+          "full_marks": "每个候选有 (a) 适配理由 (b) 不选的原因，两者都能追溯到题面、数据或团队约束"
+        },
+        {
+          "key": "3_naming_variant",
+          "name": "命名准确性",
+          "full_marks": "每个修饰词均能定位到公式、代码与验证；允许标准名称"
+        },
+        {
+          "key": "4_solver_feasibility",
+          "name": "求解可行性",
+          "full_marks": "已确认求解库存在、时间复杂度可承受，且 toy demo 真跑通"
+        },
+        {
+          "key": "5_literature_support",
+          "name": "文献/理论支撑",
+          "full_marks": "关键选型主张有相关且已核验的来源；不以篇数代替相关性"
+        }
+      ]
+    },
+    "4": {
+      "label": "Foundation（假设 + 符号 + 术语）",
+      "source_of_truth": "references/stage_04_foundation.md",
+      "dims": [
+        {
+          "key": "1_assumption_count",
+          "name": "假设必要性",
+          "full_marks": "每条都对应实际模型依赖，无同义凑数项"
+        },
+        {
+          "key": "2_assumption_support",
+          "name": "假设支撑",
+          "full_marks": "每条都有来源与证据路径（文献 / 附件数据 / 物理或业务机制 / 可执行检验）；必要但尚未验证的标 `provisional` 并在 Stage 5/6 安排检验（反模式 B1）"
+        },
+        {
+          "key": "3_symbol_uniqueness",
+          "name": "符号唯一性",
+          "full_marks": "同一符号不跨语境换义；需要单位的量均标明单位"
+        },
+        {
+          "key": "4_consistency_with_model",
+          "name": "与模型一致性",
+          "full_marks": "与 Stage 3 选定模型无矛盾；Stage 5 结束后回检一次"
+        },
+        {
+          "key": "5_terminology_standard",
+          "name": "术语规范",
+          "full_marks": "专业术语首次出现即给定义并中英对照；正文中可能歧义的术语均已定义，无未使用术语"
+        }
+      ]
+    },
+    "5": {
+      "label": "子问题递归循环（stage-level 跨子问）",
+      "source_of_truth": "references/stage_05_subproblem_loop.md",
+      "dims": [
+        {
+          "key": "1_subproblem_completeness",
+          "name": "子问题完整性",
+          "full_marks": "所有 Qi 都跑完"
+        },
+        {
+          "key": "2_cross_reference_chain",
+          "name": "依赖链",
+          "full_marks": "有依据的上下游接口均显式传递；无合理依赖时理由已记录"
+        },
+        {
+          "key": "3_symbol_consistency",
+          "name": "符号一致",
+          "full_marks": "全 Qi 用同一套 stage 4 符号"
+        },
+        {
+          "key": "4_visual_density",
+          "name": "证据表达",
+          "full_marks": "图、表与数值产物足以支持关键论点且无装饰性重复"
+        },
+        {
+          "key": "5_time_budget",
+          "name": "时间预算",
+          "full_marks": "在已确认的 stage 5 预算内完成；偏差已留痕并获用户确认"
+        }
+      ]
+    },
+    "5_per_qi": {
+      "label": "子问题递归循环（per-Qi，每个 Qi 跑一次）",
+      "source_of_truth": "references/stage_05_subproblem_loop.md",
+      "dims": [
+        {
+          "key": "1_problem_fit",
+          "name": "模型与问题契合",
+          "full_marks": "目标函数 / 决策变量 / 约束 与题面一一对应"
+        },
+        {
+          "key": "2_math_rigor",
+          "name": "数学严谨性",
+          "full_marks": "符号一致, 推导无跳跃"
+        },
+        {
+          "key": "3_solve_correctness",
+          "name": "求解正确性",
+          "full_marks": "代码运行 + sanity check 通过"
+        },
+        {
+          "key": "4_visualization",
+          "name": "结果表达",
+          "full_marks": "每个关键论点有最合适的图、表或数值证据；不重复、不凑数量"
+        },
+        {
+          "key": "5_physical_meaning",
+          "name": "物理意义讨论",
+          "full_marks": "解释与结果证据绑定；baseline 仅在公平可比时使用"
+        }
+      ]
+    },
+    "6": {
+      "label": "全局灵敏度 / 稳健性",
+      "source_of_truth": "references/stage_06_robustness.md",
+      "dims": [
+        {
+          "key": "1_multivariate_perturbation",
+          "name": "验证设计契合度",
+          "full_marks": "按核心风险选择 OAT / 联合扰动 / 重采样 / 数据留出 / 情景或边界分析，并说明为什么是这一种"
+        },
+        {
+          "key": "2_perturbation_realism",
+          "name": "范围真实性",
+          "full_marks": "参数域、数据切分与场景有题目、数据或领域依据"
+        },
+        {
+          "key": "3_output_completeness",
+          "name": "输出完整性",
+          "full_marks": "同时追踪关键性能、决策变化、可行性与失败样本中适用的部分"
+        },
+        {
+          "key": "4_robust_interval_quantitative",
+          "name": "定量可复核",
+          "full_marks": "报告样本、种子、计算方法、区间及判断标准"
+        },
+        {
+          "key": "5_failure_warning",
+          "name": "边界诚实度",
+          "full_marks": "不虚构临界点，明确已观察边界与未测试区域"
+        }
+      ]
+    },
+    "7": {
+      "label": "模型评价 + 推广",
+      "source_of_truth": "references/stage_07_evaluation.md",
+      "dims": [
+        {
+          "key": "1_strengths_specific",
+          "name": "优点具体",
+          "full_marks": "每项都有证据路径、适用范围和不外推声明"
+        },
+        {
+          "key": "2_weaknesses_real",
+          "name": "局限真实",
+          "full_marks": "覆盖证据、受影响结论、替代方案与验证代价"
+        },
+        {
+          "key": "3_improvements_actionable",
+          "name": "改进可执行",
+          "full_marks": "有对照设计、指标、资源，并区分 planned / tested / adopted / rejected；未做对照实验时不填收益"
+        },
+        {
+          "key": "4_generalization_concrete",
+          "name": "推广具体",
+          "full_marks": "说明可复用结构、重新标定、新风险与最低验证，或诚实不主张推广"
+        },
+        {
+          "key": "5_self_critique_credibility",
+          "name": "自我批判可信",
+          "full_marks": "不隐瞒失败样本，不把计划当结果，不虚构提升幅度；不写「假设理想化」这类套话（`anti_patterns.md` 会自动检）"
+        }
+      ]
+    },
+    "8": {
+      "label": "论文写作",
+      "source_of_truth": "references/rubrics.md",
+      "dims": [
+        {
+          "key": "1_abstract_5_paragraph",
+          "name": "摘要信息闭环",
+          "full_marks": "覆盖问题、逐问方法、可追溯结果、验证与边界；不机械凑段或字数"
+        },
+        {
+          "key": "2_section_completeness",
+          "name": "章节完整性",
+          "full_marks": "题目要求与证据链所需章节齐全,无空节"
+        },
+        {
+          "key": "3_formulas_figures_citations",
+          "name": "公式 / 图表 / 引用",
+          "full_marks": "编号规范,首次引用先解释,引用格式符合所选竞赛当年要求"
+        },
+        {
+          "key": "4_language_quality",
+          "name": "语言质量",
+          "full_marks": "句长适度,无明显语病 (phrase_bank 关键词命中率)"
+        },
+        {
+          "key": "5_visual_consistency",
+          "name": "视觉一致性",
+          "full_marks": "字号/配色/字体 全文统一,无 Word/Excel 默认输出"
+        }
+      ]
+    },
+    "9": {
+      "label": "终稿审核（L1 层；L3 五视角 panel 另见 feedback_layer3_panel.md）",
+      "source_of_truth": "references/rubrics.md",
+      "dims": [
+        {
+          "key": "1_anti_pattern_coverage",
+          "name": "反模式覆盖",
+          "full_marks": "`anti_patterns.md` 的全部索引项都过了一遍（`doctor.py` 报的 66 条），命中的每一条**要么已修，要么在论文里写明为什么不适用**；不允许\"看过了\"但无结论"
+        },
+        {
+          "key": "2_visual_polish",
+          "name": "图表定稿质量",
+          "full_marks": "逐张过 `figures/README.md` 的硬规矩：轴标签带单位、无双纵轴、≥2 系列有图例、只标结论点、顺序色非彩虹；灰度校样已翻过一遍"
+        },
+        {
+          "key": "3_panel_consensus",
+          "name": "Panel 共识",
+          "full_marks": "L3 五视角无 high-severity 未决项；verdict 不靠权重覆盖异议（任一 high-severity 保持 `block`）"
+        },
+        {
+          "key": "4_bottleneck_addressed",
+          "name": "瓶颈已处理",
+          "full_marks": "最低分维度与高影响 issue 已**定向修补并让受影响视角复核**，不是记录在案就算完"
+        },
+        {
+          "key": "5_pdf_compile_clean",
+          "name": "提交件可编可查",
+          "full_marks": "`check_compliance.py` 无 FAIL：PDF 能编、中文可从 PDF 提取、页数/大小/摘要单页合规、AI 声明三项齐、附录含源程序、正文与 PDF 元数据无身份信息"
+        }
+      ]
+    }
+  },
+  "_optional_fields": "dims[].fail_marks：1 分锚点（失败行为），可选。只有 stage 0 原表带这一列；渲染器检测到任一维有它就出第三列。**给 Critic 两端锚点比只给满分行为更好**，其它 stage 想加就补这个字段。"
+}

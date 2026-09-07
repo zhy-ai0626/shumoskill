@@ -24,6 +24,24 @@ import numpy as np
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import cumcm_style as cs  # noqa: E402
 
+# 输出编码交给 scripts/_console.py，不要在 main() 里无条件
+# `sys.stdout.reconfigure(encoding="utf-8")`——那样会把 cp936 交互控制台里的
+# 中文打成乱码。_console.init() 只在非 tty（管道/mintty）时才切 UTF-8，
+# 并把 ✓/✗ 降级成 ASCII 兜底。详见该文件的模块 docstring。
+sys.path.insert(0, os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "scripts"))
+try:
+    import _console  # noqa: E402
+except ImportError:                                    # figures/ 被单独拷出去用
+    class _console:                                    # noqa: N801
+        @staticmethod
+        def init() -> None:
+            pass
+
+        @staticmethod
+        def sym(text: str) -> str:
+            return text
+
 OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "gallery")
 
 # 三张范例用真题附件画（拿真数据画是有意的——同时验证了这套样式在真实量级下成立）。
@@ -113,9 +131,13 @@ def fig_inverse() -> list[dict]:
     fit = 0.5 + 0.42 * np.cos(4 * np.pi * (n0 + 3.4e-6 * nu ** 2)
                               * 7.44 * nu * 1e-4)
 
+    # **hspace 不能放进 gridspec_kw**：后面的 `tight_layout()` 会重算并把它丢掉，
+    # matplotlib 3.11 只给一句 "Axes that are not compatible with tight_layout"
+    # 的 UserWarning，图照出——两个面板之间的紧贴间距静默失效。
+    # 正确顺序是 tight_layout() 之后再 subplots_adjust()（见函数末尾）。
     fig, (ax, axr) = plt.subplots(
         2, 1, figsize=(9.6, 4.6), sharex=True,
-        gridspec_kw={"height_ratios": [3, 1], "hspace": 0.08})
+        gridspec_kw={"height_ratios": [3, 1]})
     ax.plot(nu, obs, label="实测反射率",
             **cs.series_kw(0, "line", n_points=nu.size, alpha=0.9))
     ax.plot(nu, fit, label="模型拟合", **cs.series_kw(1, "line", n_points=nu.size))
@@ -134,6 +156,7 @@ def fig_inverse() -> list[dict]:
               legend=False)
     cs.add_units_note(fig, "范例数据为合成；结构照 2025B 型（多光束干涉 + 色散）")
     fig.tight_layout()
+    fig.subplots_adjust(hspace=0.10)      # 残差面板紧贴主图，共用一条 x 轴
     return [cs.save(fig, os.path.join(OUT, "02_工程反演_拟合与残差.png"))]
 
 
@@ -334,17 +357,27 @@ def fig_sensitivity() -> list[dict]:
     y = np.arange(len(params))
 
     fig, ax = plt.subplots(figsize=(7.2, 3.6))
-    ax.barh(y, low[order], color=cs.COLORS[0], hatch="//",
-            edgecolor=cs.COLORS[0], linewidth=0.0, label="参数取下界")
-    ax.barh(y, high[order], color=cs.COLORS[7], hatch="\\\\",
-            edgecolor=cs.COLORS[7], linewidth=0.0, label="参数取上界")
+    # **必须走 series_kw，不要手写 color/hatch/edgecolor。**
+    # 这里原来写的是 `color=COLORS[0], hatch="//", edgecolor=COLORS[0]`——
+    # matplotlib 的 hatch 线正是用 edgecolor 画的，设成和填充同色等于用填充色
+    # 在填充上画线：彩色稿勉强看得出，**灰度稿里上下界两根条完全同色、
+    # 网格一根都看不见**，第二通道整个失效（`linewidth=0.0` 又雪上加霜）。
+    # README「开发过程中被实测纠正的三处」第一条讲的就是它，
+    # 但那次只修进了 series_kw，这张图绕过了 series_kw 所以一直还是坏的。
+    ax.barh(y, low[order], label="参数取下界",
+            **cs.series_kw(0, "bar", height=0.62))
+    ax.barh(y, high[order], label="参数取上界",
+            **cs.series_kw(7, "bar", height=0.62))
     ax.axvline(0, color=cs.AXIS, lw=1.0, zorder=4)
     ax.set_yticks(y)
     ax.set_yticklabels([params[i] for i in order])
     ax.grid(True, axis="x")
     ax.grid(False, axis="y")
+    # 标注往**图内**偏（dx 为正）。原来是 dx=-16，把文字推到了 y 轴外面，
+    # 和刻度标签叠成"太阳锥角半角-11.5%"。
     cs.annotate_value(ax, low[order][-1], y[-1], "%.1f%%" % low[order][-1],
-                      dx=-16, dy=-3)
+                      dx=22, dy=-3)
+    ax.margins(x=0.06)
     cs.finish(ax, xlabel="总功率相对基线的变化 (%)", ylabel="扰动参数",
               title="按影响幅度排序：可行性只由第一项决定")
     fig.tight_layout()
@@ -411,9 +444,11 @@ def fig_schematic() -> list[dict]:
 
     # 1. 分层色带。**注意上下顺序**：matplotlib 的 y 向上，光从上方的空气入射，
     #    所以空气必须是 y 最大的那一层。第一版写反了，图上光从衬底里射出来。
-    for y0, y1, c, name in ((5.0, 8.0, "#fdf3d8", "空气  $n_0$"),
-                            (3.2, 5.0, "#e3eefb", "外延层  $n_1(\lambda)$"),
-                            (0.4, 3.2, "#e6f3ec", "衬底  $n_2$")):
+    # 含 LaTeX 的字符串一律加 r 前缀：`"$n_1(\lambda)$"` 里的 `\l` 是无效转义，
+    # Python 3.12 只报 SyntaxWarning（图照出），3.15 起会变 SyntaxError。
+    for y0, y1, c, name in ((5.0, 8.0, "#fdf3d8", r"空气  $n_0$"),
+                            (3.2, 5.0, "#e3eefb", r"外延层  $n_1(\lambda)$"),
+                            (0.4, 3.2, "#e6f3ec", r"衬底  $n_2$")):
         ax.add_patch(plt.Rectangle((0.6, y0), 8.8, y1 - y0, facecolor=c,
                                    edgecolor="none", zorder=0))
         ax.text(0.85, (y0 + y1) / 2, name, fontsize=cs.BASE_FONT - 1,
@@ -462,6 +497,238 @@ def fig_schematic() -> list[dict]:
 
 
 
+# ============================================================ 通用：技术路线流程图
+def fig_flow() -> list[dict]:
+    """总体技术路线图。**52% 的一等奖论文有流程图，平均 2.3 张**
+    （44 篇官方展示实测），通常是"总体一张 + 每问一张"，而
+    `paper_skeleton.md` 的 `## 2.1 总体技术路线` 就是给它留的位置。
+
+    这张是"总体一张"的画法。四条规矩都体现在代码里：
+
+    1. **层级靠位置和箭头表达，不靠颜色**。颜色只标角色（输入/步骤/建模/
+       校验/输出），灰度稿里塌成同一片浅灰也读得懂——因为结构没依赖颜色。
+    2. **箭头连边中点，不连中心**（`b.s` → `b2.n`）。连中心的箭头会扎进框里
+       压住文字，这是手搓流程图最常见的翻车点。
+    3. **反馈边画虚线**，和主流程一眼分开。有回检环的论文，评委看得出你真回检了。
+    4. **框里写"做什么"，不写"用什么"**。"跨问一致性回检"比"一致性模块"有信息。
+    """
+    fig, ax = cs.flow_canvas(figsize=(7.2, 5.6))
+
+    # 上面两个框故意跨在 Q1/Q2 上方（x=2..50），好让主干箭头**正对 Q1 的中线**
+    # 竖直落下。上面居中、下面靠左的话，主干第一根箭头就是一条斜线，
+    # 读者第一眼要判断它到底指向哪个 Q。
+    b_in = cs.flow_box(ax, 2, 85.5, 48, 8.5, "题面 + 附件数据", tint="input")
+    b_sc = cs.flow_box(ax, 2, 71, 48, 10.5,
+                       "附件结构体检 → 判题型\n成分? 重复测量? 数据口径?",
+                       tint="step")
+    b_q1 = cs.flow_box(ax, 2, 52, 28, 11,
+                       "Q1 基准模型\n最简情形先跑通", tint="model")
+    b_q2 = cs.flow_box(ax, 36, 52, 28, 11,
+                       "Q2 加不确定性\n随机 / 鲁棒", tint="model")
+    b_q3 = cs.flow_box(ax, 70, 52, 28, 11,
+                       "Q3 加耦合\n变量间相关性", tint="model")
+    b_ck = cs.flow_box(ax, 22, 33, 56, 10.5,
+                       "跨问一致性回检\n把「上界/不可行」类断言用最终解代回",
+                       tint="check")
+    b_se = cs.flow_box(ax, 22, 19, 56, 9, "灵敏度 + 鲁棒性（按影响排序）",
+                       tint="step")
+    b_out = cs.flow_box(ax, 22, 4, 56, 9, "结论、决策建议与交付文件",
+                        tint="output")
+
+    cs.flow_arrow(ax, b_in.bottom(0.29), b_sc.top(0.29))
+    cs.flow_arrow(ax, b_sc.bottom(0.29), b_q1.n)
+    # 这两根只有 6 个单位长，文字必须抬到箭头上方——压在上面白底会把线盖没
+    cs.flow_arrow(ax, b_q1.e, b_q2.w_, text="解沿用", text_dy=3.4)
+    cs.flow_arrow(ax, b_q2.e, b_q3.w_, text="解沿用", text_dy=3.4)
+    # 三条汇聚线落在回检框上边的不同分数位，箭头尖不会叠成一团
+    for b, f in ((b_q1, 0.10), (b_q2, 0.50), (b_q3, 0.90)):
+        cs.flow_arrow(ax, b.s, b_ck.top(f))
+    cs.flow_arrow(ax, b_ck.s, b_se.n)
+    cs.flow_arrow(ax, b_se.s, b_out.n)
+    # 反馈环：回检不过就回到建模。虚线 + 直角折线（先向左、再向上），
+    # 走在主干外侧，一条线都不跨。
+    cs.flow_arrow(ax, b_ck.w_, b_q1.bottom(0.2), angle=(180, 90), dashed=True)
+    ax.text(9.2, 44.6, "不一致 → 回到建模", ha="left", va="center",
+            fontsize=cs.BASE_FONT - 2, color=cs.INK_2,
+            bbox=dict(boxstyle="round,pad=0.18", facecolor=cs.SURFACE,
+                      edgecolor="none"))
+
+    # 图例：五种角色各是什么。流程图不用 ax.legend，直接画色块更省地方。
+    for k, (name, label) in enumerate(
+            (("input", "输入"), ("step", "处理"), ("model", "建模求解"),
+             ("check", "校验回检"), ("output", "交付"))):
+        x = 2 + k * 19.6
+        ax.add_patch(plt.Rectangle((x, 96.6), 3.2, 2.3,
+                                   facecolor=cs.FLOW_TINTS[name],
+                                   edgecolor=cs.AXIS, linewidth=0.7))
+        ax.text(x + 4.2, 97.75, label, va="center", ha="left",
+                fontsize=cs.BASE_FONT - 2, color=cs.INK_2)
+
+    ax.set_title("总体技术路线（框=做什么，虚线=回检不过时的返工路径）",
+                 loc="left", pad=8, fontsize=cs.BASE_FONT)
+    cs.add_units_note(fig, "画法依据：44 篇官方展示论文中 52% 有流程图，"
+                           "平均 2.3 张（总体一张 + 每问一张）")
+    fig.tight_layout()
+    return [cs.save(fig, os.path.join(OUT, "09_通用_技术路线流程图.png"))]
+
+
+# ============================================================ 通用：相关矩阵
+def _spearman(X: "np.ndarray") -> "np.ndarray":
+    """Spearman = 秩上的 Pearson。自己算，省一个 scipy 依赖。
+
+    用 Spearman 而不是 Pearson 的理由要写进论文：不要求正态、对单调非线性
+    和离群点都稳。2024C 一等奖就是这么选的。
+    """
+    R = np.apply_along_axis(
+        lambda col: np.argsort(np.argsort(col)).astype(float), 0, X)
+    return np.corrcoef(R, rowvar=False)
+
+
+def fig_corr() -> list[dict]:
+    """相关系数矩阵 + 最强那一对的散点确认。
+
+    为什么要配第二个面板：**热力图只给候选，不给结论**。一个 0.9 的格子可能
+    来自真单调关系，也可能来自两个离群点，或者是被中间段的散点掩盖的 U 形——
+    矩阵上都长成同一个深色格。`playbook-evaluation-decision.md` 要求
+    "必须先做相关系数矩阵，必要时合并或删减指标"，而删指标之前必须看散点。
+
+    色标的坑写在 `cs.corr_heatmap` 的 docstring 里：随手 `imshow(C)` 会按数据
+    范围自动拉伸，0 就不在中点上了，**"看起来中性"的格子其实是强正相关**。
+    """
+    rng = np.random.default_rng(20240907)
+    n = 240
+    # 因子模型生成，保证矩阵是真正的相关矩阵（半正定），不是手填的数
+    f_scale = rng.normal(size=n)          # 地块规模因子
+    f_price = rng.normal(size=n)          # 市场行情因子
+    area = 60 + 14 * f_scale + rng.normal(0, 3, n)
+    yield_ = 420 + 55 * f_scale + rng.normal(0, 40, n)
+    price = 6.2 + 1.5 * f_price + rng.normal(0, 0.35, n)
+    cost = 2.4 + 0.42 * f_price + 0.006 * area + rng.normal(0, 0.22, n)
+    demand = 2.6e4 + 320 * f_price - 900 * f_scale + rng.normal(0, 2600, n)
+    # 斤/亩 × 亩 × 元/斤 = 元；元/亩 × 亩 = 元。两项同量纲才能相减，再折成万元。
+    profit = (yield_ * area * price - cost * area) / 1e4
+    bean = np.clip(0.30 - 0.0022 * area + rng.normal(0, 0.05, n), 0, 1)
+
+    X = np.column_stack([area, yield_, price, cost, demand, profit, bean])
+    # 单位跟着变量走，**不要在轴标签里硬写**——最强那一对是算出来的，
+    # 换一份数据就换一对变量，硬写的单位不会报错，只会写错。
+    labels = ["种植面积", "亩产量", "销售价格", "种植成本",
+              "预期销量", "净利润", "豆类占比"]
+    units = ["亩", "斤/亩", "元/斤", "元/亩", "斤", "万元", "无量纲"]
+    C = _spearman(X)
+
+    fig, (ax, ax2) = plt.subplots(
+        1, 2, figsize=(9.4, 4.2), gridspec_kw={"width_ratios": [1.25, 1]})
+
+    cs.corr_heatmap(ax, C, labels, annot_min=0.45,
+                    cbar_label=r"Spearman $\rho$ (无量纲)")
+    ax.set_title("(a) 只标 |ρ|≥0.45 的格子；遮上三角（矩阵对称）",
+                 loc="left", pad=8, fontsize=cs.BASE_FONT)
+
+    # 挑出下三角里 |ρ| 最大的一对，画散点确认
+    tri = np.tril(np.abs(C), k=-1)
+    i, j = np.unravel_index(np.argmax(tri), tri.shape)
+    ax2.plot(X[:, j], X[:, i], label="观测 (n=%d)" % n,
+             **cs.series_kw(0, "scatter", n_series=1,
+                            markersize=3.4, alpha=0.55))
+    # 单调趋势线用秩回归的等价物：分位数分箱中位数，不做线性假设
+    q = np.quantile(X[:, j], np.linspace(0, 1, 9))
+    mid, med = [], []
+    for a, b in zip(q[:-1], q[1:]):
+        m = (X[:, j] >= a) & (X[:, j] <= b)
+        if m.sum() >= 5:
+            mid.append(np.median(X[m, j]))
+            med.append(np.median(X[m, i]))
+    ax2.plot(mid, med, color=cs.COLORS[7], lw=1.6, ls="--", marker="",
+             zorder=4, label="分箱中位数")
+    cs.finish(ax2, xlabel="%s (%s)" % (labels[j], units[j]),
+              ylabel="%s (%s)" % (labels[i], units[i]),
+              title="(b) ρ=%.2f 这一对：散点确认是单调关系，不是离群点撑出来的"
+                    % C[i, j], legend=True)
+    cs.add_units_note(fig, "范例数据为合成（因子模型，保证矩阵半正定）；"
+                           "相关矩阵必须用发散色且把 0 钉在中点")
+    fig.tight_layout()
+    return [cs.save(fig, os.path.join(OUT, "10_通用_相关矩阵热力图.png"))]
+
+
+# ============================================================ 通用：描述统计
+def fig_descriptive() -> list[dict]:
+    """描述统计三联：分布 + 分组箱线 + 逐列缺失概览。
+
+    这三张对应 Stage 2 Step 4 的产出。**先看清楚数据长什么样，再决定动不动它**
+    ——而"动不动"的判据在 `题型与算法对照.md` §四第一步：常规统计预处理
+    （去重/插补/按分位删异常值）默认不做，领域方法内在要求的质控要做并写依据。
+
+    (c) 那张尤其值得画进论文的"数据说明"一节：它把缺失结构摊开给评委看，
+    比一句"数据存在少量缺失"有说服力，而且**画出来才会发现缺失不是随机的**
+    （这里"检测日期"整段缺失和"孕周"的缺失是同一批行）。
+    """
+    rng = np.random.default_rng(925)
+    n = 1081
+    # 右偏的浓度分布：不做对数变换就直接上正态假设的检验会失效
+    conc = rng.lognormal(mean=1.85, sigma=0.42, size=n)
+    grp_id = rng.integers(0, 4, size=n)
+    shift = np.array([-0.9, 0.0, 0.7, 1.4])
+    grouped = conc + shift[grp_id]
+
+    fig, axes = plt.subplots(1, 3, figsize=(10.4, 3.5),
+                             gridspec_kw={"width_ratios": [1, 1, 1.05]})
+
+    # ---- (a) 分布：直方 + 中位数/均值。**右偏时这两条会分开，一眼看出来**
+    ax = axes[0]
+    ax.hist(conc, bins=36, **cs.series_kw(0, "fill", alpha=0.75))
+    for v, name, slot in ((np.median(conc), "中位数", 7), (conc.mean(), "均值", 3)):
+        ax.axvline(v, color=cs.COLORS[slot], lw=1.4,
+                   ls="--" if name == "均值" else "-",
+                   label="%s %.2f" % (name, v), zorder=4)
+    cs.finish(ax, xlabel="Y 染色体浓度 (%)", ylabel="频数 (次)",
+              title="(a) 右偏：均值被右尾拉走，报中位数", legend=True)
+
+    # ---- (b) 分组箱线：Stage 6 的标准交付形式之一
+    ax = axes[1]
+    data = [grouped[grp_id == g] for g in range(4)]
+    bp = ax.boxplot(data, widths=0.58, patch_artist=True, showfliers=True,
+                    medianprops=dict(color=cs.INK, linewidth=1.3),
+                    whiskerprops=dict(color=cs.AXIS, linewidth=0.9),
+                    capprops=dict(color=cs.AXIS, linewidth=0.9),
+                    flierprops=dict(marker="o", markersize=2.4,
+                                    markerfacecolor=cs.MUTED,
+                                    markeredgecolor="none", alpha=0.5))
+    for i, patch in enumerate(bp["boxes"]):
+        kw = cs.series_kw(i, "bar")
+        patch.set(facecolor=kw["facecolor"], hatch=kw["hatch"],
+                  edgecolor=cs.SURFACE, linewidth=0.0)
+    ax.set_xticks(range(1, 5), ["<28", "28–32", "32–36", "≥36"])
+    ax.axhline(4, color=cs.COLORS[7], lw=1.1, ls="--", zorder=1)
+    cs.annotate_value(ax, 4.1, 4, "达标线 4%", dy=5, color=cs.COLORS[7])
+    cs.finish(ax, xlabel="BMI 分组 (无量纲)", ylabel="Y 染色体浓度 (%)",
+              title="(b) 离群点保留并标出，不要先删掉再画", legend=False)
+
+    # ---- (c) 逐列缺失概览。**缺失率排序 + 标出共现，比一句"少量缺失"有用**
+    ax = axes[2]
+    cols = ["检测孕周", "孕妇BMI", "原始读段数", "GC 含量",
+            "唯一比对读段数", "检测日期", "末次月经"]
+    miss = np.array([0.002, 0.000, 0.000, 0.000, 0.006, 0.171, 0.171])
+    order = np.argsort(miss)
+    ax.barh(np.arange(len(cols)), miss[order] * 100,
+            **cs.series_kw(0, "bar", height=0.62))
+    ax.set_yticks(range(len(cols)), [cols[k] for k in order])
+    for y, v in enumerate(miss[order]):
+        if v > 0:
+            ax.text(v * 100 + 0.35, y, "%.1f%%" % (v * 100), va="center",
+                    fontsize=cs.BASE_FONT - 2, color=cs.INK_2)
+    ax.set_xlim(0, max(miss) * 100 * 1.35)
+    cs.finish(ax, xlabel="缺失率 (%)", ylabel="附件列 (按缺失率排序)",
+              title="(c) 后两列缺失率相同 → 同一批行，缺失非随机",
+              legend=False)
+
+    cs.add_units_note(fig, "范例数据为合成；口径照 2025C 附件的列结构。"
+                           "看清分布与缺失结构之后再决定动不动数据——"
+                           "判据见 题型与算法对照.md §四第一步")
+    fig.tight_layout()
+    return [cs.save(fig, os.path.join(OUT, "11_通用_描述统计三联.png"))]
+
+
 BUILDERS = {
     "机理": fig_mechanism,
     "反演": fig_inverse,
@@ -471,11 +738,14 @@ BUILDERS = {
     "灵敏度": fig_sensitivity,
     "权衡": fig_tradeoff,
     "示意图": fig_schematic,
+    "流程图": fig_flow,
+    "相关矩阵": fig_corr,
+    "描述统计": fig_descriptive,
 }
 
 
 def main() -> int:
-    sys.stdout.reconfigure(encoding="utf-8")
+    _console.init()
     font = cs.use()
     print("中文字体：%s" % font)
     os.makedirs(OUT, exist_ok=True)
@@ -488,14 +758,16 @@ def main() -> int:
         try:
             for info in BUILDERS[key]():
                 made.append(info)
-                print("  ✓ %s  %.1f×%.1f in  灰度校样 %s"
-                      % (os.path.basename(info["path"]), *info["size_inch"],
-                         "有" if info["gray"] else "无(缺 Pillow)"))
+                print(_console.sym("  ✓ %s  %.1f×%.1f in  灰度校样 %s"
+                                   % (os.path.basename(info["path"]),
+                                      *info["size_inch"],
+                                      "有" if info["gray"] else "无(缺 Pillow)")))
         except MissingAttachment as exc:
             skipped.append(key)
             print("  – %s 跳过：%s" % (key, exc))
         except Exception as exc:                       # noqa: BLE001
-            print("  ✗ %s 失败：%s: %s" % (key, type(exc).__name__, exc))
+            print(_console.sym("  ✗ %s 失败：%s: %s"
+                               % (key, type(exc).__name__, exc)))
     print("\n共 %d 张，输出在 %s" % (len(made), OUT))
     if skipped:
         print("跳过 %d 张（%s）：这几张用真题附件画，设 CUMCM_REPO 指向资料库根目录后重跑。"

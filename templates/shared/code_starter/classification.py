@@ -142,7 +142,8 @@ def handle_imbalanced(X, y, method="smote"):
         X_res, y_res = sampler.fit_resample(X, y)
         return X_res, y_res
     except ImportError:
-        print("⚠ imblearn 未安装, 直接返回原数据")
+        # ASCII 前缀：GBK 下 print U+26A0(⚠) 会抛 UnicodeEncodeError
+        print("[!] imblearn 未安装, 直接返回原数据")
         return X, y
 
 
